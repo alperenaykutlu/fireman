@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/client/">
+    <Project Path="client/Fireman.Mobile/Fireman.Mobile.csproj" />
+  </Folder>
+  <Folder Name="/server/">
+    <Project Path="server/Fireman.Api/Fireman.Api.csproj" />
+    <Project Path="server/Fireman.Application/Fireman.Application.csproj" />
+    <Project Path="server/Fireman.Contracts/Fireman.Contracts.csproj" />
+    <Project Path="server/Fireman.Domain/Fireman.Domain.csproj" />
+    <Project Path="server/Fireman.Infrastructure/Fireman.Infrastructure.csproj" />
+    <Project Path="server/Fireman.Shared/Fireman.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Fireman.ArchitectureTests/Fireman.ArchitectureTests.csproj" />
+    <Project Path="tests/Fireman.IntegrationTests/Fireman.IntegrationTests.csproj" />
+    <Project Path="tests/Fireman.UnitTests/Fireman.UnitTests.csproj" />
+  </Folder>
+</Solution>
