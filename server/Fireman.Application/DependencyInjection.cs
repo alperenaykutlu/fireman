@@ -53,6 +53,9 @@ public static class DependencyInjection
         services.AddScoped<IEventHandler<MissionCompletedEvent>, AnalyticsEventHandler>();
         services.AddScoped<IEventHandler<MissionCompletedEvent>, NotificationEventHandler>();
         services.AddScoped<IEventHandler<ItemPurchasedEvent>, AnalyticsEventHandler>();
+        services.AddScoped<IEventHandler<ItemEquippedEvent>, CharacterCacheInvalidationHandler>();
+        services.AddScoped<IEventHandler<MissionCompletedEvent>, LeaderboardCacheInvalidationHandler>();
+        services.AddScoped<IEventHandler<MatchFinishedEvent>, LeaderboardCacheInvalidationHandler>();
 
         return services;
     }

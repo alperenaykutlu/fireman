@@ -29,6 +29,9 @@ builder.Services.AddControllers()
 // SignalR for real-time multiplayer
 builder.Services.AddSignalR();
 
+// Health Checks (Section 61)
+builder.Services.AddHealthChecks();
+
 // OpenAPI
 builder.Services.AddOpenApi();
 
@@ -85,6 +88,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<Fireman.Api.Hubs.MatchHub>("/hubs/match");
+app.MapHealthChecks("/health");
 
 app.Run();
 

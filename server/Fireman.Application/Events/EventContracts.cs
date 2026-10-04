@@ -33,3 +33,10 @@ public record MatchFinishedEvent(
     Guid WinnerUserId,
     int FinalScore
 ) : IDomainEvent;
+
+public record ItemEquippedEvent(
+    Guid CharacterId,
+    Guid UserId,
+    Shared.Enums.CharacterSlot Slot,
+    Guid ItemDefinitionId
+) : IDomainEvent;

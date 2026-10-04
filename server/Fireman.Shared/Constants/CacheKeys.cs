@@ -2,12 +2,14 @@ namespace Fireman.Shared.Constants;
 
 public static class CacheKeys
 {
-    public const string UserPrefix = "user:";
-    public const string CharacterPrefix = "char:";
-    public const string LeaderboardGlobal = "leaderboard:global";
-    public const string LeaderboardWeekly = "leaderboard:weekly";
-    public const string ItemDefinitions = "items:definitions";
+    public const string Prefix = "fireman";
 
-    public static string User(Guid userId) => $"{UserPrefix}{userId}";
-    public static string Character(Guid characterId) => $"{CharacterPrefix}{characterId}";
+    public const string LeaderboardGlobal = "fireman:leaderboard:global";
+    public const string LeaderboardWeekly = "fireman:leaderboard:weekly";
+    public const string ItemDefinitions = "fireman:items:definitions";
+
+    public static string User(Guid userId) => $"{Prefix}:user:{userId}";
+    public static string Character(Guid characterId) => $"{Prefix}:character:{characterId}";
+    public static string Item(Guid itemId) => $"{Prefix}:item:{itemId}";
+    public static string SeasonLeaderboard(Guid seasonId) => $"{Prefix}:leaderboard:{seasonId}";
 }

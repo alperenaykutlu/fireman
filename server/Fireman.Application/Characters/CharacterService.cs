@@ -24,6 +24,7 @@ public class CharacterService : ICharacterService
     private readonly IInventoryRepository _inventoryRepository;
     private readonly IItemDefinitionRepository _itemDefinitionRepository;
     private readonly IGamePolicy<CanEquipItemContext> _canEquipItemPolicy;
+    private readonly Events.IEventBus _eventBus;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
 
@@ -33,6 +34,7 @@ public class CharacterService : ICharacterService
         IInventoryRepository inventoryRepository,
         IItemDefinitionRepository itemDefinitionRepository,
         IGamePolicy<CanEquipItemContext> canEquipItemPolicy,
+        Events.IEventBus eventBus,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork)
     {
@@ -41,6 +43,7 @@ public class CharacterService : ICharacterService
         _inventoryRepository = inventoryRepository;
         _itemDefinitionRepository = itemDefinitionRepository;
         _canEquipItemPolicy = canEquipItemPolicy;
+        _eventBus = eventBus;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
     }
@@ -88,6 +91,9 @@ public class CharacterService : ICharacterService
         character.EquipItem(request.Slot, itemDef.Id);
         await _characterRepository.UpdateAsync(character, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Event-driven cache invalidation (Section 86)
+        await _eventBus.PublishAsync(new Events.ItemEquippedEvent(character.Id, user.Id, request.Slot, itemDef.Id), cancellationToken);
 
         return Result.Success(await MapToDto(character, cancellationToken));
     }
