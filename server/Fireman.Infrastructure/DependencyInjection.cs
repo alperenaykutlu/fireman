@@ -38,6 +38,11 @@ public static class DependencyInjection
         services.AddScoped<IAntiCheatRepository, AntiCheatRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<Fireman.Domain.Audit.IAuditLogRepository, Fireman.Infrastructure.Persistence.Repositories.AuditLogRepository>();
+        services.AddScoped<Fireman.Domain.Social.IFriendshipRepository, Fireman.Infrastructure.Persistence.Repositories.FriendshipRepository>();
+        services.AddScoped<Fireman.Domain.Social.IPlayerReportRepository, Fireman.Infrastructure.Persistence.Repositories.PlayerReportRepository>();
+
+        // Feature Flags
+        services.AddSingleton<IFeatureFlagService, Fireman.Infrastructure.Services.FeatureFlagService>();
 
         // Idempotency
         services.AddSingleton<IIdempotencyService, Fireman.Infrastructure.Persistence.IdempotencyService>();

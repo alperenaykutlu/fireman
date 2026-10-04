@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<ILeaderboardService, LeaderboardService>();
         services.AddScoped<IOfflineSyncService, OfflineSyncService>();
         services.AddScoped<Admin.IAdminService, Admin.AdminService>();
+        services.AddScoped<Social.ISocialService, Social.SocialService>();
 
         // Strategies & Factories
         services.AddSingleton<IRewardStrategyFactory, RewardStrategyFactory>();
