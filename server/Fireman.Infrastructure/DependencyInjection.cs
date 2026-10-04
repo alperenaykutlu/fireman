@@ -37,6 +37,13 @@ public static class DependencyInjection
         services.AddScoped<ICurrencyLedgerRepository, CurrencyLedgerRepository>();
         services.AddScoped<IAntiCheatRepository, AntiCheatRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
+        services.AddScoped<Fireman.Domain.Audit.IAuditLogRepository, Fireman.Infrastructure.Persistence.Repositories.AuditLogRepository>();
+
+        // Idempotency
+        services.AddSingleton<IIdempotencyService, Fireman.Infrastructure.Persistence.IdempotencyService>();
+
+        // Hosted Services
+        services.AddHostedService<Fireman.Infrastructure.BackgroundServices.OutboxProcessorBackgroundService>();
 
         // Security & Tokens
         services.AddSingleton<IPasswordHasher, PasswordHasher>();

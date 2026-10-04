@@ -26,6 +26,9 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
 
+// SignalR for real-time multiplayer
+builder.Services.AddSignalR();
+
 // OpenAPI
 builder.Services.AddOpenApi();
 
@@ -81,6 +84,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<Fireman.Api.Hubs.MatchHub>("/hubs/match");
 
 app.Run();
 
