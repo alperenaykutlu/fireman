@@ -1,166 +1,349 @@
-// State
+// Playing with Fire 2 / Bomberman Engine for Web Canvas
+const COLS = 11;
+const ROWS = 9;
+
+const CELL_EMPTY = 0;
+const CELL_WALL = 1;     // Kırılmaz taş sütun
+const CELL_BARREL = 2;   // Kırmızı kırılabilir varil
+
+// PowerUp Tipleri
+const PU_LIGHTNING = 1;  // ⚡ Şimşek (Menzil +1)
+const PU_SHOE = 2;       // 👟 Ayakkabı (Hız)
+const PU_EXTRA_BOMB = 3; // 💣 Bomba (+1 Bomba Hakkı)
+const PU_HEAL = 4;       // 🔧 Tamir (Can +25)
+
+let grid = [];
+let bombs = [];
+let explosions = [];
+let powerUps = [];
+
+// Oyuncu Durumu
+let player = {
+  x: 1,
+  y: 1,
+  health: 100,
+  maxHealth: 100,
+  maxBombs: 1,
+  bombRange: 1,
+  speed: 1.0,
+  score: 0
+};
+
 let currentCoins = 500;
 let currentGems = 10;
-let waterLevel = 100;
-let fireIntensity = 100;
-let activeMatchId = null;
 let signalRConnection = null;
-let currentTab = 'tab-gameplay';
+let activeMatchId = null;
 
-// Canvas & Particle Simulation
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-let firefighter = { x: 80, y: 140, size: 24 };
-let fireParticles = [];
-let waterParticles = [];
+function initGame() {
+  bombs = [];
+  explosions = [];
+  powerUps = [];
+  player.x = 1;
+  player.y = 1;
+  player.health = 100;
+  player.maxBombs = 1;
+  player.bombRange = 1;
+  player.speed = 1.0;
+  player.score = 0;
 
-function initParticles() {
-  fireParticles = [];
-  for (let i = 0; i < 35; i++) {
-    fireParticles.push({
-      x: 420 + Math.random() * 80,
-      y: 120 + Math.random() * 60,
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: -1 - Math.random() * 2,
-      size: 6 + Math.random() * 10,
-      life: Math.random() * 1
-    });
-  }
-}
-
-function updateSimulation() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Zemin çizgisi
-  ctx.strokeStyle = '#223042';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, 220);
-  ctx.lineTo(canvas.width, 220);
-  ctx.stroke();
-
-  // İtfaiyeci çizimi
-  ctx.fillStyle = '#3b82f6';
-  ctx.fillRect(firefighter.x - 12, 190, 24, 30);
-  ctx.fillStyle = '#ef4444'; // Kask
-  ctx.beginPath();
-  ctx.arc(firefighter.x, 185, 10, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Nozul / Hortum
-  ctx.strokeStyle = '#94a3b8';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(firefighter.x + 8, 200);
-  ctx.lineTo(firefighter.x + 22, 195);
-  ctx.stroke();
-
-  // Yangın Kaynağı / Bina
-  if (fireIntensity > 0) {
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(400, 90, 120, 130);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(420, 110, 20, 30);
-    ctx.fillRect(470, 110, 20, 30);
-
-    // Yangın parçacıkları
-    fireParticles.forEach(p => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.size = Math.max(0, p.size - 0.15);
-      p.life -= 0.02;
-
-      if (p.life <= 0 || p.size <= 0) {
-        p.x = 420 + Math.random() * 80;
-        p.y = 190 + Math.random() * 20;
-        p.size = (fireIntensity / 10) + Math.random() * 6;
-        p.life = 1;
+  // Izgarayı oluştur
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
+        grid[r][c] = CELL_WALL;
+      } else if (r % 2 === 0 && c % 2 === 0) {
+        grid[r][c] = CELL_WALL;
+      } else if ((r <= 2 && c <= 2) || (r >= ROWS - 3 && c >= COLS - 3)) {
+        grid[r][c] = CELL_EMPTY; // Köşeler temiz
+      } else {
+        grid[r][c] = Math.random() < 0.65 ? CELL_BARREL : CELL_EMPTY;
       }
-
-      ctx.fillStyle = p.life > 0.5 ? 'rgba(255, 60, 0, 0.8)' : 'rgba(255, 165, 0, 0.7)';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  } else {
-    ctx.fillStyle = '#10b981';
-    ctx.font = '16px sans-serif';
-    ctx.fillText('✅ YANGIN SÖNDÜRÜLDÜ!', 390, 150);
-  }
-
-  // Su jet parçacıkları
-  for (let i = waterParticles.length - 1; i >= 0; i--) {
-    let wp = waterParticles[i];
-    wp.x += wp.vx;
-    wp.y += wp.vy;
-    wp.vy += 0.2; // yerçekimi
-
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.8)';
-    ctx.beginPath();
-    ctx.arc(wp.x, wp.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Çarpışma kontrolü
-    if (wp.x >= 410 && wp.x <= 520 && wp.y >= 100 && wp.y <= 220) {
-      fireIntensity = Math.max(0, fireIntensity - 0.8);
-      updateMeters();
-      waterParticles.splice(i, 1);
-    } else if (wp.y > 220) {
-      waterParticles.splice(i, 1);
     }
   }
 
-  requestAnimationFrame(updateSimulation);
+  updateHud();
+  addGameLog('💣 Playing with Fire 2 arenası hazır! Varilleri patlatın, güçlendiricileri toplayın.', 'success');
 }
 
-// Su Püskürtme
-function triggerSprayWater() {
-  if (waterLevel <= 0) {
-    addGameLog('⚠️ Su tankı boş! Yeniden doldurmalısınız.', 'danger');
+function updateHud() {
+  const hpPercent = (player.health / player.maxHealth) * 100;
+  document.getElementById('waterProgressBar').style.width = hpPercent + '%';
+  document.getElementById('waterPercentLabel').innerText = `${player.health} HP`;
+
+  const bombPercent = (bombs.length / player.maxBombs) * 100;
+  document.getElementById('fireProgressBar').style.width = Math.min(100, bombPercent) + '%';
+  document.getElementById('firePercentLabel').innerText = `${bombs.length} / ${player.maxBombs} Bomba`;
+
+  document.getElementById('matchRoomLabel').innerText = `⚡ Menzil: ${player.bombRange} | 👟 Hız: ${player.speed.toFixed(1)}x`;
+}
+
+function movePlayer(dx, dy) {
+  if (player.health <= 0) return;
+
+  const tx = player.x + dx;
+  const ty = player.y + dy;
+
+  if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return;
+  if (grid[ty][tx] !== CELL_EMPTY) return;
+  if (bombs.some(b => b.x === tx && b.y === ty)) return;
+
+  player.x = tx;
+  player.y = ty;
+
+  // PowerUp toplama
+  checkPickup(tx, ty);
+}
+
+function placeBomb() {
+  if (player.health <= 0) return;
+  if (bombs.length >= player.maxBombs) {
+    addGameLog('Maksimum bomba sayısına ulaşıldı!', 'danger');
     return;
   }
+  if (bombs.some(b => b.x === player.x && b.y === player.y)) return;
 
-  waterLevel = Math.max(0, waterLevel - 2);
-  updateMeters();
+  bombs.push({
+    x: player.x,
+    y: player.y,
+    range: player.bombRange,
+    timeLeft: 2.2
+  });
 
-  for (let i = 0; i < 6; i++) {
-    waterParticles.push({
-      x: firefighter.x + 22,
-      y: 195,
-      vx: 9 + Math.random() * 2,
-      vy: -2 - Math.random() * 2
-    });
+  updateHud();
+}
+
+function checkPickup(x, y) {
+  const idx = powerUps.findIndex(p => p.x === x && p.y === y);
+  if (idx !== -1) {
+    const item = powerUps.splice(idx, 1)[0];
+    player.score += 150;
+
+    switch (item.type) {
+      case PU_LIGHTNING:
+        player.bombRange += 1;
+        addGameLog('⚡ Şimşek Alındı! Patlama şiddeti/menzili arttı: ' + player.bombRange, 'info');
+        break;
+      case PU_SHOE:
+        player.speed += 0.25;
+        addGameLog('👟 Ayakkabı Alındı! Hareket hızı arttı: ' + player.speed.toFixed(2) + 'x', 'info');
+        break;
+      case PU_EXTRA_BOMB:
+        player.maxBombs += 1;
+        addGameLog('💣 Bomba Alındı! Maksimum bomba hakkı: ' + player.maxBombs, 'info');
+        break;
+      case PU_HEAL:
+        player.health = Math.min(player.maxHealth, player.health + 25);
+        addGameLog('🔧 Tamir Kiti! Can iyileşti: ' + player.health + ' HP', 'success');
+        break;
+    }
+    updateHud();
+  }
+}
+
+// Oyun Döngüsü
+let lastTime = performance.now();
+function gameLoop(now) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+
+  // Patlama süreleri
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    explosions[i].duration -= dt;
+    if (explosions[i].duration <= 0) {
+      explosions.splice(i, 1);
+    }
   }
 
-  if (signalRConnection && signalRConnection.state === 'Connected' && activeMatchId) {
-    signalRConnection.invoke('SendFireSuppression', activeMatchId, {
-      userId: '00000000-0000-0000-0000-000000000001',
-      fireInstanceId: '00000000-0000-0000-0000-000000000002',
-      waterVolume: 2.0,
-      extinguished: fireIntensity <= 0
-    }).catch(err => console.error(err));
+  // Bomba süreleri
+  for (let i = bombs.length - 1; i >= 0; i--) {
+    bombs[i].timeLeft -= dt;
+    if (bombs[i].timeLeft <= 0) {
+      const b = bombs.splice(i, 1)[0];
+      detonate(b);
+      updateHud();
+    }
   }
+
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+function detonate(bomb) {
+  addExplosion(bomb.x, bomb.y);
+
+  const dirs = [
+    [0, -1], [0, 1], [-1, 0], [1, 0]
+  ];
+
+  for (const dir of dirs) {
+    for (let dist = 1; dist <= bomb.range; dist++) {
+      const tx = bomb.x + (dir[0] * dist);
+      const ty = bomb.y + (dir[1] * dist);
+
+      if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) break;
+      if (grid[ty][tx] === CELL_WALL) break; // Duvara çarparsa dur
+
+      if (grid[ty][tx] === CELL_BARREL) {
+        grid[ty][tx] = CELL_EMPTY;
+        addExplosion(tx, ty);
+        player.score += 100;
+
+        // Varilden %55 şansla power-up düşer
+        if (Math.random() < 0.55) {
+          const types = [PU_LIGHTNING, PU_SHOE, PU_EXTRA_BOMB, PU_HEAL];
+          const chosen = types[Math.floor(Math.random() * types.length)];
+          powerUps.push({ x: tx, y: ty, type: chosen });
+        }
+        break; // Varilden sonra o yönde dur
+      }
+
+      // Zincirleme bomba
+      const other = bombs.find(b => b.x === tx && b.y === ty);
+      if (other) other.timeLeft = 0.05;
+
+      addExplosion(tx, ty);
+    }
+  }
+}
+
+function addExplosion(x, y) {
+  explosions.push({ x, y, duration: 0.5 });
+  if (player.x === x && player.y === y) {
+    player.health = Math.max(0, player.health - 25);
+    addGameLog('⚠️ Patlamada kaldın! Kalan Can: ' + player.health, 'danger');
+    if (player.health <= 0) {
+      addGameLog('💀 Oyuncu elendi! Yeniden başlatabilirsiniz.', 'danger');
+    }
+    updateHud();
+  }
+}
+
+// Çizim
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const cellW = canvas.width / COLS;
+  const cellH = canvas.height / ROWS;
+
+  // 1. Zemin ve Bloklar
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const rx = c * cellW;
+      const ry = r * cellH;
+
+      if (grid[r][c] === CELL_WALL) {
+        ctx.fillStyle = '#6b5e4b';
+        ctx.fillRect(rx, ry, cellW, cellH);
+        ctx.strokeStyle = '#3b3226';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rx, ry, cellW, cellH);
+      } else if (grid[r][c] === CELL_BARREL) {
+        // Kırmızı Varil
+        ctx.fillStyle = '#b94a48';
+        ctx.fillRect(rx + 2, ry + 2, cellW - 4, cellH - 4);
+        ctx.strokeStyle = '#5d2423';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(rx + 2, ry + cellH * 0.33);
+        ctx.lineTo(rx + cellW - 2, ry + cellH * 0.33);
+        ctx.moveTo(rx + 2, ry + cellH * 0.66);
+        ctx.lineTo(rx + cellW - 2, ry + cellH * 0.66);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#3f3527';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(rx, ry, cellW, cellH);
+      }
+    }
+  }
+
+  // 2. Power-Up Asset'leri
+  for (const p of powerUps) {
+    const px = p.x * cellW;
+    const py = p.y * cellH;
+
+    let icon = '⚡';
+    let bg = '#1e40af';
+    if (p.type === PU_SHOE) { icon = '👟'; bg = '#065f46'; }
+    if (p.type === PU_EXTRA_BOMB) { icon = '💣'; bg = '#7f1d1d'; }
+    if (p.type === PU_HEAL) { icon = '🔧'; bg = '#854d0e'; }
+
+    ctx.fillStyle = bg;
+    ctx.fillRect(px + 4, py + 4, cellW - 8, cellH - 8);
+    ctx.font = `${cellH * 0.55}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, px + cellW / 2, py + cellH / 2);
+  }
+
+  // 3. Bombalar
+  for (const b of bombs) {
+    const cx = (b.x + 0.5) * cellW;
+    const cy = (b.y + 0.5) * cellH;
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.arc(cx, cy, cellW * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fitil
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.arc(cx + 4, cy - cellW * 0.38, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 4. Playing with Fire Mavi Patlamalar
+  for (const exp of explosions) {
+    const ex = exp.x * cellW;
+    const ey = exp.y * cellH;
+
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+    ctx.fillRect(ex, ey, cellW, cellH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(ex + 4, ey + 4, cellW - 8, cellH - 8);
+  }
+
+  // 5. Oyuncu (İtfaiyeci)
+  if (player.health > 0) {
+    const pcx = (player.x + 0.5) * cellW;
+    const pcy = (player.y + 0.5) * cellH;
+
+    ctx.fillStyle = '#0284c7';
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, cellW * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Kask
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath();
+    ctx.arc(pcx, pcy - 2, cellW * 0.38, Math.PI, 0);
+    ctx.fill();
+
+    // Yüz
+    ctx.fillStyle = '#ffd1a4';
+    ctx.beginPath();
+    ctx.arc(pcx, pcy + 3, cellW * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Buton Etkileşimleri
+function triggerSprayWater() {
+  placeBomb();
 }
 
 function refillWaterTank() {
-  waterLevel = 100;
-  updateMeters();
-  addGameLog('🚰 Su tankı %100 dolduruldu.', 'success');
+  initGame();
 }
 
 function spawnNewFire() {
-  fireIntensity = 100;
-  updateMeters();
-  initParticles();
-  addGameLog('🔥 Yeni yangın ihbarı alındı!', 'danger');
-}
-
-function updateMeters() {
-  document.getElementById('waterProgressBar').style.width = waterLevel + '%';
-  document.getElementById('waterPercentLabel').innerText = Math.round(waterLevel) + '%';
-  document.getElementById('fireProgressBar').style.width = fireIntensity + '%';
-  document.getElementById('firePercentLabel').innerText = Math.round(fireIntensity) + '%';
+  initGame();
 }
 
 function switchTab(tabId) {
@@ -172,11 +355,11 @@ function switchTab(tabId) {
   if (target) {
     target.classList.add('active');
   }
-  currentTab = tabId;
 }
 
 function addGameLog(message, type = 'info') {
   const box = document.getElementById('gameLogs');
+  if (!box) return;
   const div = document.createElement('div');
   div.className = `log-entry log-${type}`;
   div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
@@ -185,158 +368,22 @@ function addGameLog(message, type = 'info') {
 
 function addSecurityLog(message, type = 'info') {
   const box = document.getElementById('securityLogs');
+  if (!box) return;
   const div = document.createElement('div');
   div.className = `log-entry log-${type}`;
   div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
   box.prepend(div);
 }
 
-// SignalR Bağlantısı
-async function connectSignalR() {
-  try {
-    signalRConnection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/match')
-      .withAutomaticReconnect()
-      .build();
-
-    signalRConnection.on('PlayerMoved', (move) => {
-      addGameLog(`Diğer oyuncu hareket etti: (${move.posX.toFixed(1)}, ${move.posY.toFixed(1)})`, 'info');
-    });
-
-    signalRConnection.on('FireSuppressionUpdated', (action) => {
-      addGameLog(`Takım arkadaşı su sıktı: ${action.waterVolume}L`, 'info');
-    });
-
-    signalRConnection.on('CheatViolationAlert', (reason) => {
-      addSecurityLog(`🚨 ANTI-CHEAT UYARISI: ${reason}`, 'danger');
-      alert('AntiCheat Güvenlik Uyarısı: ' + reason);
-    });
-
-    await signalRConnection.start();
-    document.getElementById('signalrStatusText').innerText = 'SignalR: Connected';
-    document.getElementById('signalrStatusBadge').querySelector('.status-dot').style.background = '#30d158';
-    addGameLog('SignalR MatchHub bağlantısı kuruldu.', 'success');
-  } catch (err) {
-    console.error(err);
-    addGameLog('SignalR bağlantı hatası: ' + err.message, 'danger');
-  }
-}
-
-// Eşleşme (Match)
-async function createMatch() {
-  try {
-    const res = await fetch('/api/v1/matches', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'CoopRescue', maxPlayers: 4 })
-    });
-    const json = await res.json();
-    if (json.success && json.data) {
-      activeMatchId = json.data.id;
-      document.getElementById('matchIdInput').value = activeMatchId;
-      document.getElementById('matchRoomLabel').innerText = `Oda: ${activeMatchId.substring(0, 8)}...`;
-      document.getElementById('matchStateBadge').innerText = 'Lobi Aktif';
-      addGameLog(`Yeni maç açıldı: ${activeMatchId}`, 'success');
-
-      if (signalRConnection && signalRConnection.state === 'Connected') {
-        await signalRConnection.invoke('JoinMatchRoom', activeMatchId);
-      }
-    } else {
-      addGameLog('Maç oluşturulamadı (Giriş yapılmış olmalıdır). Demo modunda oda simüle edildi.', 'info');
-      activeMatchId = '00000000-0000-0000-0000-000000000001';
-      document.getElementById('matchIdInput').value = activeMatchId;
-      document.getElementById('matchRoomLabel').innerText = 'Oda: Demo-Coop-01';
-    }
-  } catch (ex) {
-    addGameLog('Maç isteği hatası: ' + ex.message, 'danger');
-  }
-}
-
-function joinRandomMatch() {
-  addGameLog('Açık lobiye bağlanılıyor...', 'info');
-  document.getElementById('playersList').innerHTML = `
-    <div>🧑‍🚒 Oyuncu_1 (Kaptan - Hazır ✔)</div>
-    <div>🧑‍🚒 İtfaiyeci Ahmet (Siz - Hazır ✔)</div>
-  `;
-  document.getElementById('matchStateBadge').innerText = 'Oyun Başladı';
-}
-
-// Anti-Cheat Simülasyonları
-function simulateNormalMovement() {
-  addSecurityLog('İstemci normal hareket paketi gönderiyor (Hız: 4.5 m/s)...', 'info');
-  setTimeout(() => {
-    addSecurityLog('Sunucu Doğruladı: [Allow] Hareket hız eşiği içinde.', 'success');
-  }, 300);
-}
-
-function simulateSpeedHack() {
-  addSecurityLog('⚠️ Anormal hız paketi fırlatılıyor (Hız: 28.5 m/s, Eşik: 16.0 m/s)...', 'danger');
-  setTimeout(() => {
-    addSecurityLog('🚨 VIOLATION: SpeedHackDetected! Hız 28.5 m/s eşiği aştı. Severity: High.', 'danger');
-  }, 400);
-}
-
-function simulateTeleport() {
-  addSecurityLog('⚡ Işınlanma koordinatı fırlatılıyor (Mesafe: 120 birim / 0.1s = 1200 m/s)...', 'danger');
-  setTimeout(() => {
-    addSecurityLog('⛔ CRITICAL ANOMALY: TeleportationDetected! Kullanıcı otomatik banlandı.', 'danger');
-  }, 400);
-}
-
-// Görevler
-function loadMissions() {
-  const container = document.getElementById('missionsList');
-  container.innerHTML = `
-    <div style="background:#111822; padding:12px; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <strong>Sanayi Yangınını Söndür</strong>
-        <div style="font-size:11px; color:var(--text-muted);">Ödül: 350 🪙 | 500 XP</div>
-      </div>
-      <button class="btn btn-blue" onclick="completeDemoMission('Sanayi Yangını', 350, 500)">Tamamla</button>
-    </div>
-    <div style="background:#111822; padding:12px; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <strong>Okul Binasından 3 Kişiyi Kurtar</strong>
-        <div style="font-size:11px; color:var(--text-muted);">Ödül: 500 🪙 | 750 XP</div>
-      </div>
-      <button class="btn btn-blue" onclick="completeDemoMission('Okul Kurtarma', 500, 750)">Tamamla</button>
-    </div>
-  `;
-}
-
-function completeDemoMission(title, coins, exp) {
-  currentCoins += coins;
-  document.getElementById('headerCoins').innerText = currentCoins;
-  let currentExp = parseInt(document.getElementById('charExpDisplay').innerText) + exp;
-  document.getElementById('charExpDisplay').innerText = currentExp;
-  alert(`Tebrikler! ${title} görevi tamamlandı. +${coins} Altın ve +${exp} XP kazanıldı!`);
-}
-
-function equipDemoItem(slot, itemName) {
-  if (slot === 'Hat') document.getElementById('equippedHatSlot').innerText = itemName;
-  if (slot === 'Suit') document.getElementById('equippedSuitSlot').innerText = itemName;
-  if (slot === 'Boots') alert(itemName + ' kuşanıldı!');
-  alert(`Başarılı: ${itemName} kuşanıldı!`);
-}
-
-function claimSeasonTier(tier) {
-  alert(`Sezon Ödülü Alındı: Tier ${tier} ödülü envanterinize eklendi!`);
-}
-
-// Klavye kontrolleri
+// Klavye Kontrolleri
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
-    triggerSprayWater();
-  }
-  if (e.code === 'ArrowRight' || e.code === 'KeyD') {
-    firefighter.x = Math.min(360, firefighter.x + 8);
-  }
-  if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
-    firefighter.x = Math.max(30, firefighter.x - 8);
-  }
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') movePlayer(0, -1);
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') movePlayer(0, 1);
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') movePlayer(-1, 0);
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') movePlayer(1, 0);
+  if (e.code === 'Space') placeBomb();
 });
 
 // Başlangıç
-initParticles();
-updateSimulation();
-loadMissions();
+initGame();
+requestAnimationFrame(gameLoop);
