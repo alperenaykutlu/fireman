@@ -1,12 +1,16 @@
 using System.ComponentModel;
 using Fireman.Contracts.Missions;
+using Fireman.Mobile.Navigation;
 using Fireman.Mobile.ViewModels;
 
 namespace Fireman.Mobile.Views;
 
-public class MissionsViewBinding : IDisposable
+public class MissionsViewBinding : IScreen, IDisposable
 {
     private readonly MissionsViewModel _viewModel;
+
+    public string ScreenName => "Missions";
+    public bool IsActive { get; private set; }
 
     public IReadOnlyList<MissionDto> MissionsList => _viewModel.Missions;
     public bool IsLoading => _viewModel.IsBusy;
@@ -18,6 +22,24 @@ public class MissionsViewBinding : IDisposable
     {
         _viewModel = viewModel;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _viewModel.LoadMissionsAsync();
+    }
+
+    public Task ShowAsync()
+    {
+        IsActive = true;
+        OnViewUpdated?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    public Task HideAsync()
+    {
+        IsActive = false;
+        return Task.CompletedTask;
     }
 
     public async Task OnRefreshClicked()

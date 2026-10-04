@@ -1,12 +1,16 @@
 using System.ComponentModel;
+using Fireman.Mobile.Navigation;
 using Fireman.Mobile.ViewModels;
 using Fireman.Shared.Enums;
 
 namespace Fireman.Mobile.Views;
 
-public class CharacterCustomizationViewBinding : IDisposable
+public class CharacterCustomizationViewBinding : IScreen, IDisposable
 {
     private readonly CharacterCustomizationViewModel _viewModel;
+
+    public string ScreenName => "CharacterCustomization";
+    public bool IsActive { get; private set; }
 
     public string DisplayName { get; private set; } = string.Empty;
     public int DisplayLevel { get; private set; }
@@ -21,6 +25,24 @@ public class CharacterCustomizationViewBinding : IDisposable
         _viewModel = viewModel;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         UpdateStateFromViewModel();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _viewModel.LoadCharacterAsync();
+    }
+
+    public Task ShowAsync()
+    {
+        IsActive = true;
+        OnViewUpdated?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    public Task HideAsync()
+    {
+        IsActive = false;
+        return Task.CompletedTask;
     }
 
     public async Task OnEquipButtonClicked(CharacterSlot slot, Guid itemId)

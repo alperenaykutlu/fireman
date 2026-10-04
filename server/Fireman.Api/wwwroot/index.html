@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fireman Operations & Control Center</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="logo-container">
+      <div class="logo-badge">🚒</div>
+      <div>
+        <div class="brand-title">FIREMAN COMMAND & OPERATIONS</div>
+        <div class="brand-subtitle">Server-Authoritative Multi-Tier Platform</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="status-badge" id="apiStatusBadge">
+        <span class="status-dot"></span>
+        <span id="apiStatusText">API: Online</span>
+      </div>
+      <div class="status-badge" id="signalrStatusBadge">
+        <span class="status-dot" style="background:#5ac8fa;"></span>
+        <span id="signalrStatusText">SignalR: Disconnected</span>
+      </div>
+      <div class="status-badge">
+        <span>🪙 <strong id="headerCoins">500</strong></span>
+        <span style="margin-left: 8px;">💎 <strong id="headerGems">10</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('tab-gameplay')">🚒 Canlı Yangın & Oyun</button>
+    <button class="tab-btn" onclick="switchTab('tab-character')">🧑‍🚒 Karakter & Ekipman</button>
+    <button class="tab-btn" onclick="switchTab('tab-missions')">🎯 Görevler & Sezon</button>
+    <button class="tab-btn" onclick="switchTab('tab-anticheat')">🛡️ Anti-Cheat & Güvenlik</button>
+    <button class="tab-btn" onclick="switchTab('tab-leaderboard')">🏆 Lider Tablosu</button>
+  </nav>
+
+  <main>
+    <!-- TAB 1: OYUN & YANGIN SIMULATÖRÜ -->
+    <section id="tab-gameplay" class="tab-content active grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Canlı Yangın Sahası (Multiplayer Canvas)</span>
+          <span style="font-size:12px; color:var(--text-muted);" id="matchRoomLabel">Oda: Yok</span>
+        </div>
+        <canvas id="gameCanvas" width="600" height="280"></canvas>
+        <div class="hud-meters">
+          <div class="meter">
+            <div class="meter-label">
+              <span>💧 Su Tankı</span>
+              <span id="waterPercentLabel">100%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="waterProgressBar" class="progress-fill fill-water" style="width: 100%;"></div>
+            </div>
+          </div>
+          <div class="meter">
+            <div class="meter-label">
+              <span>🔥 Yangın Şiddeti</span>
+              <span id="firePercentLabel">100%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="fireProgressBar" class="progress-fill fill-fire" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button class="btn btn-blue" id="btnSprayWater" onclick="triggerSprayWater()">💧 Su Püskürt (Space)</button>
+          <button class="btn btn-secondary" onclick="refillWaterTank()">🚰 Su Tankını Doldur</button>
+          <button class="btn" style="background:#ff9500;" onclick="spawnNewFire()">🔥 Yeni Yangın Başlat</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Multiplayer Eşleşme (Matchmaking)</span>
+          <span id="matchStateBadge" class="status-badge">Lobi Bekleniyor</span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:12px;">
+          <button class="btn" onclick="createMatch()">+ Yeni Maç Oluştur</button>
+          <button class="btn btn-secondary" onclick="joinRandomMatch()">Odaya Katıl</button>
+          <button class="btn btn-secondary" onclick="connectSignalR()">SignalR Bağlan</button>
+        </div>
+        <div class="form-group">
+          <label>Aktif Maç ID</label>
+          <input type="text" id="matchIdInput" placeholder="Match GUID..." readonly>
+        </div>
+        <div class="card-title" style="font-size:13px; margin-top:12px;">Lobi & Oda Katılımcıları</div>
+        <div id="playersList" style="margin-bottom:12px; font-size:13px; color:var(--text-muted);">
+          Katılımcı bulunamadı.
+        </div>
+        <div class="card-title" style="font-size:13px;">Canlı Oda Etkinlik Günlüğü</div>
+        <div class="log-box" id="gameLogs">
+          <div class="log-entry log-info">[Sistem] Arayüz hazırlandı.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: KARAKTER & ENTOVARYER -->
+    <section id="tab-character" class="tab-content grid-2">
+      <div class="card">
+        <div class="card-title">İtfaiyeci Profili</div>
+        <div style="display:flex; gap:20px; align-items:center; margin-bottom:18px;">
+          <div style="font-size:56px; background:#111822; padding:16px; border-radius:12px; border:1px solid var(--border-color);">🧑‍🚒</div>
+          <div>
+            <h2 id="charNameDisplay">İtfaiyeci Ahmet</h2>
+            <div style="color:var(--text-muted); font-size:13px;">Seviye: <strong id="charLevelDisplay">1</strong> | XP: <span id="charExpDisplay">0</span></div>
+            <div style="margin-top:6px;" class="status-badge">Statü: Aktif</div>
+          </div>
+        </div>
+
+        <div class="card-title" style="font-size:13px;">Kuşanılmış Ekipmanlar</div>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:14px;">
+          <div class="item-card">
+            <div class="item-icon">🪖</div>
+            <div class="item-name">Kask</div>
+            <div class="item-meta" id="equippedHatSlot">Standart Kask</div>
+          </div>
+          <div class="item-card">
+            <div class="item-icon">🦺</div>
+            <div class="item-name">Ceket</div>
+            <div class="item-meta" id="equippedSuitSlot">İtfaiye Ceketi</div>
+          </div>
+          <div class="item-card">
+            <div class="item-icon">🧯</div>
+            <div class="item-name">Nozul / Hortum</div>
+            <div class="item-meta" id="equippedNozzleSlot">Yüksek Basınçlı</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Envanter & Mağaza</span>
+          <button class="btn btn-secondary" onclick="loadInventory()">Yenile</button>
+        </div>
+        <div class="item-grid" id="inventoryGrid">
+          <div class="item-card">
+            <div class="item-icon">🪖</div>
+            <div class="item-name">Titanyum Kask</div>
+            <div class="item-meta">Epik • 250 🪙</div>
+            <button class="btn btn-blue" style="font-size:11px; padding:4px 8px;" onclick="equipDemoItem('Hat', 'Titanyum Kask')">Kuşan</button>
+          </div>
+          <div class="item-card">
+            <div class="item-icon">🥾</div>
+            <div class="item-name">Ateş Geçirmez Bot</div>
+            <div class="item-meta">Nadir • 150 🪙</div>
+            <button class="btn btn-blue" style="font-size:11px; padding:4px 8px;" onclick="equipDemoItem('Boots', 'Ateş Geçirmez Bot')">Kuşan</button>
+          </div>
+          <div class="item-card">
+            <div class="item-icon">🦺</div>
+            <div class="item-name">Termal Yelek</div>
+            <div class="item-meta">Efsanevi • 500 🪙</div>
+            <button class="btn btn-blue" style="font-size:11px; padding:4px 8px;" onclick="equipDemoItem('Suit', 'Termal Yelek')">Kuşan</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: GÖREVLER & SEZON -->
+    <section id="tab-missions" class="tab-content grid-2">
+      <div class="card">
+        <div class="card-title">
+          <span>Aktif Kurtarma Görevleri</span>
+          <button class="btn btn-secondary" onclick="loadMissions()">Görevleri Getir</button>
+        </div>
+        <div id="missionsList" style="display:flex; flex-direction:column; gap:10px;">
+          <!-- Dinamik Görev Kartları -->
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Sezon 1: Alevlerin Şehri (Battle Pass)</div>
+        <div style="margin-bottom:14px; font-size:13px; color:var(--text-muted);">
+          Mevcut Puan: <strong style="color:var(--gold);" id="seasonPointsDisplay">450 Puan</strong>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="background:#111822; padding:12px; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>Tier 1: 500 Altın</strong>
+              <div style="font-size:11px; color:var(--text-muted);">100 Puan Gerekli</div>
+            </div>
+            <button class="btn btn-secondary" disabled>Alındı ✔</button>
+          </div>
+          <div style="background:#111822; padding:12px; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>Tier 2: Efsanevi Kask</strong>
+              <div style="font-size:11px; color:var(--text-muted);">300 Puan Gerekli</div>
+            </div>
+            <button class="btn btn-blue" onclick="claimSeasonTier(2)">Ödülü Al</button>
+          </div>
+          <div style="background:#111822; padding:12px; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong>Tier 3: 50 Elmas</strong>
+              <div style="font-size:11px; color:var(--text-muted);">600 Puan Gerekli</div>
+            </div>
+            <button class="btn btn-secondary" disabled>Kilitli 🔒</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: ANTI-CHEAT & GÜVENLİK MERKEZİ -->
+    <section id="tab-anticheat" class="tab-content grid-2">
+      <div class="card">
+        <div class="card-title">Anti-Cheat Doğrulama Testi</div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+          Sunucu otoriter (Server-Authoritative) korumayı test etmek için istemciden anormal hız veya koordinat atlaması gönderin:
+        </p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button class="btn" style="background:var(--fire-red);" onclick="simulateSpeedHack()">⚠️ Hız Hilesi Simüle Et (Speed Hack Testi)</button>
+          <button class="btn" style="background:#d946ef;" onclick="simulateTeleport()">⚡ Teleportasyon Simüle Et (Teleport Testi)</button>
+          <button class="btn btn-secondary" onclick="simulateNormalMovement()">✔️ Normal Hareketi Doğrula (Normal Sprint)</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Canlı Güvenlik & İhlal Günlüğü (AntiCheatLog)</div>
+        <div class="log-box" id="securityLogs" style="height:260px;">
+          <div class="log-entry log-info">[AntiCheat] Motor devrede. Hız eşiği: 16.0 m/s. Teleport eşiği: 40.0 m/s.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: LİDER TABLOSU -->
+    <section id="tab-leaderboard" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>Global Yangın Söndürme Lider Tablosu</span>
+          <button class="btn btn-secondary" onclick="loadLeaderboard()">Sıralamayı Güncelle</button>
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border-color); color:var(--text-muted);">
+              <th style="padding:10px;">Sıra</th>
+              <th>Oyuncu</th>
+              <th>Kurtarma</th>
+              <th>Puan</th>
+              <th>Kıdem</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody">
+            <tr style="border-bottom:1px solid #1c2635;">
+              <td style="padding:10px;">🥇 #1</td>
+              <td><strong>Kaptan_Alev</strong></td>
+              <td>124</td>
+              <td><span style="color:var(--gold);">84,200</span></td>
+              <td>Başçavuş</td>
+            </tr>
+            <tr style="border-bottom:1px solid #1c2635;">
+              <td style="padding:10px;">🥈 #2</td>
+              <td><strong>Su_Püskürten_99</strong></td>
+              <td>98</td>
+              <td><span style="color:var(--gold);">62,450</span></td>
+              <td>Kıdemli Çavuş</td>
+            </tr>
+            <tr style="border-bottom:1px solid #1c2635;">
+              <td style="padding:10px;">🥉 #3</td>
+              <td><strong>Demir_Hortum</strong></td>
+              <td>76</td>
+              <td><span style="color:var(--gold);">49,100</span></td>
+              <td>Çavuş</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
