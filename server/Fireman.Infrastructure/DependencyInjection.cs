@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<Fireman.Domain.Audit.IAuditLogRepository, Fireman.Infrastructure.Persistence.Repositories.AuditLogRepository>();
         services.AddScoped<Fireman.Domain.Social.IFriendshipRepository, Fireman.Infrastructure.Persistence.Repositories.FriendshipRepository>();
         services.AddScoped<Fireman.Domain.Social.IPlayerReportRepository, Fireman.Infrastructure.Persistence.Repositories.PlayerReportRepository>();
+        services.AddScoped<Fireman.Domain.Seasons.ISeasonRepository, Fireman.Infrastructure.Persistence.Repositories.SeasonRepository>();
 
         // Feature Flags
         services.AddSingleton<IFeatureFlagService, Fireman.Infrastructure.Services.FeatureFlagService>();

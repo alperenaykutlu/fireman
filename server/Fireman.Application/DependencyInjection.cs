@@ -31,6 +31,8 @@ public static class DependencyInjection
         services.AddScoped<IOfflineSyncService, OfflineSyncService>();
         services.AddScoped<Admin.IAdminService, Admin.AdminService>();
         services.AddScoped<Social.ISocialService, Social.SocialService>();
+        services.AddScoped<Economy.IWalletService, Economy.WalletService>();
+        services.AddScoped<Seasons.ISeasonService, Seasons.SeasonService>();
 
         // Strategies & Factories
         services.AddSingleton<IRewardStrategyFactory, RewardStrategyFactory>();
