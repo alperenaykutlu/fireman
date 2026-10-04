@@ -33,6 +33,10 @@ public static class DependencyInjection
         services.AddScoped<Social.ISocialService, Social.SocialService>();
         services.AddScoped<Economy.IWalletService, Economy.WalletService>();
         services.AddScoped<Seasons.ISeasonService, Seasons.SeasonService>();
+        services.AddScoped<Notifications.INotificationService, Notifications.NotificationService>();
+
+        // Save System Migration
+        services.AddSingleton<Fireman.Domain.SaveSystem.ISaveMigrationService, Fireman.Domain.SaveSystem.SaveMigrationService>();
 
         // Strategies & Factories
         services.AddSingleton<IRewardStrategyFactory, RewardStrategyFactory>();

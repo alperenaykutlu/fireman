@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\server\Fireman.Contracts\Fireman.Contracts.csproj" />
     <ProjectReference Include="..\..\server\Fireman.Shared\Fireman.Shared.csproj" />
+    <ProjectReference Include="..\..\server\Fireman.Domain\Fireman.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

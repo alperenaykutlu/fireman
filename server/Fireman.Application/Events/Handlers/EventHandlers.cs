@@ -67,17 +67,28 @@ public class AnalyticsEventHandler : IEventHandler<MissionCompletedEvent>, IEven
 
 public class NotificationEventHandler : IEventHandler<MissionCompletedEvent>
 {
+    private readonly Fireman.Domain.Notifications.INotificationRepository _notificationRepository;
     private readonly ILogger<NotificationEventHandler> _logger;
 
-    public NotificationEventHandler(ILogger<NotificationEventHandler> logger)
+    public NotificationEventHandler(
+        Fireman.Domain.Notifications.INotificationRepository notificationRepository,
+        ILogger<NotificationEventHandler> logger)
     {
+        _notificationRepository = notificationRepository;
         _logger = logger;
     }
 
-    public Task HandleAsync(MissionCompletedEvent domainEvent, CancellationToken cancellationToken = default)
+    public async Task HandleAsync(MissionCompletedEvent domainEvent, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Notification: Push notification sent to user {UserId}: 'Mission completed successfully!'",
+        _logger.LogInformation("Notification: Mission completed by user {UserId}. Sending in-app reward notification.",
             domainEvent.UserId);
-        return Task.CompletedTask;
+
+        var notification = new Fireman.Domain.Notifications.InAppNotification(
+            domainEvent.UserId,
+            "Mission Completed!",
+            $"You earned {domainEvent.EarnedCoins} coins and {domainEvent.EarnedXp} XP for completing your mission with {domainEvent.Rescues} rescues.",
+            Shared.Enums.NotificationType.Reward);
+
+        await _notificationRepository.AddAsync(notification, cancellationToken);
     }
 }
