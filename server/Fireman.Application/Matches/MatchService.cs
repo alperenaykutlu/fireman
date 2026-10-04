@@ -1,4 +1,6 @@
+using Fireman.Application.AntiCheat;
 using Fireman.Application.Common.Interfaces;
+using Fireman.Application.Policies;
 using Fireman.Contracts.Matches;
 using Fireman.Domain.Matches;
 using Fireman.Domain.Users;
@@ -22,17 +24,23 @@ public class MatchService : IMatchService
     private readonly IUserRepository _userRepository;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly CanJoinMatchPolicy _canJoinMatchPolicy;
+    private readonly IAntiCheatValidationService _antiCheatService;
 
     public MatchService(
         IMatchRepository matchRepository,
         IUserRepository userRepository,
         ICurrentUser currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        CanJoinMatchPolicy canJoinMatchPolicy,
+        IAntiCheatValidationService antiCheatService)
     {
         _matchRepository = matchRepository;
         _userRepository = userRepository;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _canJoinMatchPolicy = canJoinMatchPolicy;
+        _antiCheatService = antiCheatService;
     }
 
     public async Task<Result<MatchDto>> CreateMatchAsync(CreateMatchRequest request, CancellationToken cancellationToken = default)
@@ -62,6 +70,10 @@ public class MatchService : IMatchService
         if (user is null || match is null)
             return Result.Failure<MatchDto>("Match.NotFound", "Match or user not found.");
 
+        var policyResult = _canJoinMatchPolicy.Evaluate(new CanJoinMatchContext(user, match, match.Players.Count));
+        if (!policyResult.IsAllowed)
+            return Result.Failure<MatchDto>("Match.JoinDenied", policyResult.Reason ?? "Join policy denied.");
+
         match.Join(user.Id, user.Username.Value);
         await _matchRepository.UpdateAsync(match, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -86,6 +98,16 @@ public class MatchService : IMatchService
         var match = await _matchRepository.GetByIdAsync(request.MatchId, cancellationToken);
         if (match is null)
             return Result.Failure<MatchDto>("Match.NotFound", "Match not found.");
+
+        var validation = await _antiCheatService.ValidateScoreSubmissionAsync(
+            _currentUser.UserId.Value,
+            request.Score,
+            request.Rescues,
+            elapsedSeconds: 60.0,
+            cancellationToken);
+
+        if (!validation.IsValid)
+            return Result.Failure<MatchDto>("AntiCheat.ScoreRejected", validation.ViolationReason ?? "Score rejected by anti-cheat.");
 
         match.RecordPlayerScore(_currentUser.UserId.Value, request.Score, request.Rescues);
         await _matchRepository.UpdateAsync(match, cancellationToken);

@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<Economy.IWalletService, Economy.WalletService>();
         services.AddScoped<Seasons.ISeasonService, Seasons.SeasonService>();
         services.AddScoped<Notifications.INotificationService, Notifications.NotificationService>();
+        services.AddScoped<AntiCheat.IAntiCheatValidationService, AntiCheat.AntiCheatValidationService>();
 
         // Save System Migration
         services.AddSingleton<Fireman.Domain.SaveSystem.ISaveMigrationService, Fireman.Domain.SaveSystem.SaveMigrationService>();
@@ -43,6 +44,8 @@ public static class DependencyInjection
         services.AddSingleton<IPricingStrategyFactory, PricingStrategyFactory>();
 
         // Policies
+        services.AddScoped<CanJoinMatchPolicy>();
+        services.AddScoped<IGamePolicy<CanJoinMatchContext>, CanJoinMatchPolicy>();
         services.AddScoped<IGamePolicy<CanBuyItemContext>, CanBuyItemPolicy>();
         services.AddScoped<IGamePolicy<CanEquipItemContext>, CanEquipItemPolicy>();
         services.AddScoped<IGamePolicy<CanStartMissionContext>, CanStartMissionPolicy>();

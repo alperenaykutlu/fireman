@@ -12,6 +12,7 @@ using Fireman.Infrastructure.Messaging;
 using Fireman.Infrastructure.Persistence;
 using Fireman.Infrastructure.Persistence.Repositories;
 using Fireman.Infrastructure.Security;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,6 +23,11 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Persistence
+        var connectionString = configuration.GetConnectionString("DefaultConnection") 
+            ?? "Host=localhost;Database=fireman_db;Username=postgres;Password=postgres";
+        services.AddDbContext<FiremanDbContext>(options =>
+            options.UseNpgsql(connectionString));
+
         services.AddSingleton<InMemoryDbContext>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 

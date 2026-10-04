@@ -70,10 +70,15 @@ public class CharacterCustomizationViewModel : BaseViewModel
             return false;
         }
 
+        return await EquipItemAsync(CharacterSlot.Hat, hatItem.ItemDefinitionId);
+    }
+
+    public async Task<bool> EquipItemAsync(CharacterSlot slot, Guid itemDefinitionId)
+    {
         IsBusy = true;
         try
         {
-            var response = await _apiClient.EquipItemAsync(new EquipItemRequest(CharacterSlot.Hat, hatItem.ItemDefinitionId));
+            var response = await _apiClient.EquipItemAsync(new EquipItemRequest(slot, itemDefinitionId));
             if (response.Success && response.Data != null)
             {
                 Character = response.Data;

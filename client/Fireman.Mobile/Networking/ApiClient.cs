@@ -5,6 +5,7 @@ using Fireman.Contracts.Auth;
 using Fireman.Contracts.Characters;
 using Fireman.Contracts.Common;
 using Fireman.Contracts.Inventory;
+using Fireman.Contracts.Matches;
 using Fireman.Contracts.Missions;
 using Fireman.Contracts.Offline;
 
@@ -81,5 +82,33 @@ public class ApiClient : IApiClient
         var response = await _httpClient.PostAsJsonAsync("api/v1/offline-sync", request);
         return await response.Content.ReadFromJsonAsync<ApiResponse<OfflineSyncResponse>>()
                ?? ApiResponse<OfflineSyncResponse>.Fail("Sync failed.");
+    }
+
+    public async Task<ApiResponse<MatchDto>> CreateMatchAsync(CreateMatchRequest request)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/v1/matches", request);
+        return await response.Content.ReadFromJsonAsync<ApiResponse<MatchDto>>()
+               ?? ApiResponse<MatchDto>.Fail("Match creation failed.");
+    }
+
+    public async Task<ApiResponse<MatchDto>> JoinMatchAsync(JoinMatchRequest request)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/v1/matches/join", request);
+        return await response.Content.ReadFromJsonAsync<ApiResponse<MatchDto>>()
+               ?? ApiResponse<MatchDto>.Fail("Join match failed.");
+    }
+
+    public async Task<ApiResponse<MatchDto>> GetMatchAsync(Guid matchId)
+    {
+        var response = await _httpClient.GetAsync($"api/v1/matches/{matchId}");
+        return await response.Content.ReadFromJsonAsync<ApiResponse<MatchDto>>()
+               ?? ApiResponse<MatchDto>.Fail("Get match failed.");
+    }
+
+    public async Task<ApiResponse<MatchDto>> SubmitMatchScoreAsync(SubmitMatchScoreRequest request)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/v1/matches/score", request);
+        return await response.Content.ReadFromJsonAsync<ApiResponse<MatchDto>>()
+               ?? ApiResponse<MatchDto>.Fail("Submit match score failed.");
     }
 }
