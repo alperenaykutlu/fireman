@@ -26,6 +26,18 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
 
+// CORS for Mobile & Web clients
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyHeader()
+              .AllowAnyMethod()
+              .SetIsOriginAllowed(_ => true)
+              .AllowCredentials();
+    });
+});
+
 // SignalR for real-time multiplayer
 builder.Services.AddSignalR();
 
@@ -85,6 +97,8 @@ app.UseMiddleware<RateLimitingMiddleware>();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+app.UseCors();
 
 app.UseAuthentication();
 app.UseAuthorization();
