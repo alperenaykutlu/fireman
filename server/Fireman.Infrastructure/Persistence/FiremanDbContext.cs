@@ -39,6 +39,8 @@ public class FiremanDbContext : DbContext
     public DbSet<SeasonRewardTier> SeasonRewardTiers => Set<SeasonRewardTier>();
     public DbSet<UserSeasonProgress> UserSeasonProgresses => Set<UserSeasonProgress>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
+    public DbSet<Clan> Clans => Set<Clan>();
+    public DbSet<ClanMember> ClanMembers => Set<ClanMember>();
     public DbSet<PlayerReport> PlayerReports => Set<PlayerReport>();
     public DbSet<InAppNotification> InAppNotifications => Set<InAppNotification>();
 

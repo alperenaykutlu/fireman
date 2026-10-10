@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading.Channels;
 using Fireman.Contracts.Matches;
 using Fireman.GameCore.Model;
+using Fireman.GameCore.Replay;
 using Fireman.GameCore.Simulation;
 using Microsoft.AspNetCore.SignalR;
 
@@ -8,13 +11,14 @@ namespace Fireman.Api.Hubs;
 
 /// <summary>
 /// Manages active game matches, running deterministic 30Hz simulation loops
-/// and broadcasting authoritative WorldSnapshot updates at 20Hz.
+/// with drift compensation and broadcasting authoritative WorldSnapshot updates at 20Hz.
 /// </summary>
 public interface IMatchHostManager
 {
     void CreateOrJoinMatch(string matchId, int playerCount = 4);
     void EnqueueInput(string matchId, PlayerInputDto input);
     void RemoveMatch(string matchId);
+    MatchReplay? GetMatchReplay(string matchId);
 }
 
 public sealed class MatchHostManager : IMatchHostManager, IDisposable
@@ -55,6 +59,11 @@ public sealed class MatchHostManager : IMatchHostManager, IDisposable
         }
     }
 
+    public MatchReplay? GetMatchReplay(string matchId)
+    {
+        return _matches.TryGetValue(matchId, out var session) ? session.Replay : null;
+    }
+
     public void Dispose()
     {
         foreach (var session in _matches.Values)
@@ -67,26 +76,43 @@ public sealed class MatchHostManager : IMatchHostManager, IDisposable
 
 internal sealed class ActiveMatchSession : IDisposable
 {
+    private const double MillisecondsPerTick = 1000.0 / 30.0; // ~33.333 ms
+
     private readonly string _matchId;
     private readonly IHubContext<MatchHub> _hubContext;
     private readonly ILogger _logger;
     private readonly MatchSimulation _simulation;
-    private readonly ConcurrentQueue<PlayerInputDto> _inputQueue = new();
+    private readonly Channel<PlayerInputDto> _inputChannel = Channel.CreateUnbounded<PlayerInputDto>(new UnboundedChannelOptions
+    {
+        SingleReader = true,
+        SingleWriter = false
+    });
     private readonly CancellationTokenSource _cts = new();
     private Task? _loopTask;
     private readonly ConcurrentDictionary<Guid, int> _playerSlotMap = new();
     private int _nextSlot = 1;
+
+    public MatchReplay Replay { get; }
 
     public ActiveMatchSession(string matchId, int playerCount, IHubContext<MatchHub> hubContext, ILogger logger)
     {
         _matchId = matchId;
         _hubContext = hubContext;
         _logger = logger;
+        int seed = matchId.GetHashCode();
+
         _simulation = new MatchSimulation(new MatchConfig
         {
             PlayerCount = playerCount,
-            InitialSeed = matchId.GetHashCode()
+            InitialSeed = seed
         });
+
+        Replay = new MatchReplay
+        {
+            MatchId = Guid.TryParse(matchId, out var g) ? g : Guid.NewGuid(),
+            InitialSeed = seed,
+            PlayerCount = playerCount
+        };
     }
 
     public void Start()
@@ -96,7 +122,7 @@ internal sealed class ActiveMatchSession : IDisposable
 
     public void EnqueueInput(PlayerInputDto input)
     {
-        _inputQueue.Enqueue(input);
+        _inputChannel.Writer.TryWrite(input);
     }
 
     private int GetOrCreateSlot(Guid userId)
@@ -106,20 +132,20 @@ internal sealed class ActiveMatchSession : IDisposable
 
     private async Task SimulationLoopAsync()
     {
-        // 30 Hz fixed time step (33.33ms per tick)
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(33.33));
         long tickCount = 0;
         long lastAckedSeq = 0;
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            while (await timer.WaitForNextTickAsync(_cts.Token))
+            while (!_cts.Token.IsCancellationRequested)
             {
                 tickCount++;
+                var tickStart = stopwatch.Elapsed;
 
-                // 1. Drain incoming inputs for this tick
+                // 1. Drain incoming inputs from the actor channel for this tick
                 var inputsToApply = new List<PlayerInput>();
-                while (_inputQueue.TryDequeue(out var inputDto))
+                while (_inputChannel.Reader.TryRead(out var inputDto))
                 {
                     int slot = GetOrCreateSlot(inputDto.UserId);
                     inputsToApply.Add(new PlayerInput(
@@ -135,11 +161,18 @@ internal sealed class ActiveMatchSession : IDisposable
                     }
                 }
 
-                // 2. Authoritative step in GameCore
+                // 2. Authoritative deterministic step in GameCore
                 var tickResult = _simulation.Step(inputsToApply.ToArray());
 
-                // 3. Broadcast snapshot to players at ~20Hz (every tick or 2 out of 3 ticks)
-                if (tickCount % 2 == 0 || _simulation.State.IsMatchOver)
+                // Record into replay
+                Replay.Ticks.Add(new TickInputBundle(tickCount, inputsToApply));
+                if (tickCount % 30 == 0)
+                {
+                    Replay.CheckpointHashes[tickCount] = tickResult.WorldHash;
+                }
+
+                // 3. Broadcast snapshot to players at ~20Hz (2 out of 3 ticks: ticks % 3 != 0)
+                if (tickCount % 3 != 0 || _simulation.State.IsMatchOver)
                 {
                     var snapshot = CreateSnapshotDto(tickResult.Tick, tickResult.WorldHash, lastAckedSeq);
                     await _hubContext.Clients.Group(_matchId).SendAsync("WorldSnapshotReceived", snapshot, _cts.Token);
@@ -147,14 +180,30 @@ internal sealed class ActiveMatchSession : IDisposable
 
                 if (_simulation.State.IsMatchOver)
                 {
-                    _logger.LogInformation("Match {MatchId} finished. Winner: {WinnerId}", _matchId, _simulation.State.WinnerPlayerId);
+                    Replay.FinalWorldHash = _simulation.State.ComputeHash();
+                    Replay.TotalTicks = tickCount;
+                    _logger.LogInformation("Match {MatchId} finished at tick {Tick}. Winner: {WinnerId}", _matchId, tickCount, _simulation.State.WinnerPlayerId);
                     break;
+                }
+
+                // 4. Drift compensation calculation (targetTime = start + tickCount * dt)
+                var expectedElapsedMs = tickCount * MillisecondsPerTick;
+                var currentElapsedMs = stopwatch.Elapsed.TotalMilliseconds;
+                var sleepRemainingMs = expectedElapsedMs - currentElapsedMs;
+
+                if (sleepRemainingMs > 1.0)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(sleepRemainingMs), _cts.Token);
+                }
+                else if (sleepRemainingMs < -50.0)
+                {
+                    _logger.LogWarning("Match {MatchId} simulation loop falling behind by {LagMs:F2}ms at tick {Tick}", _matchId, -sleepRemainingMs, tickCount);
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            // Session disposed
+            // Session cancellation requested
         }
         catch (Exception ex)
         {
@@ -215,5 +264,6 @@ internal sealed class ActiveMatchSession : IDisposable
     {
         _cts.Cancel();
         _cts.Dispose();
+        _inputChannel.Writer.TryComplete();
     }
 }

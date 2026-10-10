@@ -20,8 +20,8 @@ public class GameplayHudViewBinding : IScreen
     public HudState State { get; private set; }
 
     public event Action<HudState>? OnHudUpdated;
-    public event Func<PlayerMovementDto, Task>? OnMovementInput;
-    public event Func<FireSuppressionActionDto, Task>? OnSuppressionTriggered;
+    public event Func<PlayerInputDto, Task>? OnMovementInput;
+    public event Func<PlayerInputDto, Task>? OnBombTriggered;
 
     public GameplayHudViewBinding()
     {
@@ -59,21 +59,21 @@ public class GameplayHudViewBinding : IScreen
         OnHudUpdated?.Invoke(State);
     }
 
-    public async Task HandleJoystickMoved(Guid userId, float x, float y, float z, float rotY, float speed)
+    public async Task HandleMovementInput(Guid matchId, Guid userId, long seq, byte moveDir)
     {
         if (OnMovementInput != null)
         {
-            var movement = new PlayerMovementDto(userId, x, y, z, rotY, speed);
-            await OnMovementInput.Invoke(movement);
+            var input = new PlayerInputDto(matchId, userId, seq, seq, moveDir, PlaceBomb: false, SubTileX: 0, SubTileY: 0);
+            await OnMovementInput.Invoke(input);
         }
     }
 
-    public async Task HandleHoseTriggerPressed(Guid userId, Guid fireInstanceId, float waterVolume, bool extinguished)
+    public async Task HandlePlaceBombPressed(Guid matchId, Guid userId, long seq)
     {
-        if (OnSuppressionTriggered != null)
+        if (OnBombTriggered != null)
         {
-            var action = new FireSuppressionActionDto(userId, fireInstanceId, waterVolume, extinguished);
-            await OnSuppressionTriggered.Invoke(action);
+            var input = new PlayerInputDto(matchId, userId, seq, seq, MoveDir: 0, PlaceBomb: true, SubTileX: 0, SubTileY: 0);
+            await OnBombTriggered.Invoke(input);
         }
     }
 }

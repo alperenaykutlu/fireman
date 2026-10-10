@@ -215,3 +215,27 @@ CREATE TABLE IF NOT EXISTS "InAppNotifications" (
 );
 
 CREATE INDEX IF NOT EXISTS "IX_InAppNotifications_UserId_IsRead" ON "InAppNotifications" ("UserId", "IsRead");
+
+CREATE TABLE IF NOT EXISTS "clans" (
+    "id" uuid NOT NULL PRIMARY KEY,
+    "name" character varying(50) NOT NULL,
+    "tag" character varying(10) NOT NULL UNIQUE,
+    "description" character varying(500) NULL,
+    "badge_icon" character varying(50) NOT NULL,
+    "level" integer NOT NULL DEFAULT 1,
+    "experience_points" bigint NOT NULL DEFAULT 0,
+    "required_trophies" integer NOT NULL DEFAULT 0,
+    "is_open" boolean NOT NULL DEFAULT TRUE,
+    "created_at" timestamp with time zone NOT NULL DEFAULT (now() at time zone 'utc')
+);
+
+CREATE TABLE IF NOT EXISTS "clan_members" (
+    "id" uuid NOT NULL PRIMARY KEY,
+    "clan_id" uuid NOT NULL REFERENCES "clans"("id") ON DELETE CASCADE,
+    "user_id" uuid NOT NULL REFERENCES "Users"("Id") ON DELETE CASCADE,
+    "role" smallint NOT NULL DEFAULT 1,
+    "joined_at" timestamp with time zone NOT NULL DEFAULT (now() at time zone 'utc'),
+    CONSTRAINT "UQ_clan_members_clan_user" UNIQUE ("clan_id", "user_id")
+);
+
+CREATE INDEX IF NOT EXISTS "IX_clan_members_user_id" ON "clan_members" ("user_id");
