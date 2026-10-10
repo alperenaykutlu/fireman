@@ -6,7 +6,7 @@ import 'viewmodels/character_viewmodel.dart';
 import 'viewmodels/missions_viewmodel.dart';
 import 'viewmodels/match_viewmodel.dart';
 import 'viewmodels/gameplay_viewmodel.dart';
-import 'views/main_shell.dart';
+import 'views/onboarding_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +35,7 @@ class FiremanApp extends StatelessWidget {
       title: 'Fireman Mobile',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const MainShell(),
+      home: const OnboardingScreen(),
     );
   }
 }

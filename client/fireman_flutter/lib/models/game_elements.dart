@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum CellType {
   empty,
   wall,       // Kırılmaz sabit blok
@@ -46,5 +48,23 @@ class PowerUpItem {
     required this.x,
     required this.y,
     required this.type,
+  });
+}
+
+class BotPlayer {
+  int x;
+  int y;
+  int health;
+  final String name;
+  final Color color;
+  double moveCooldown;
+
+  BotPlayer({
+    required this.x,
+    required this.y,
+    this.health = 100,
+    required this.name,
+    required this.color,
+    this.moveCooldown = 0.0,
   });
 }

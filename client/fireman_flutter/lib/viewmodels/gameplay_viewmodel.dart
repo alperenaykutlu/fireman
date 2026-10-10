@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../models/game_elements.dart';
 
 class GameplayViewModel extends ChangeNotifier {
@@ -11,6 +11,9 @@ class GameplayViewModel extends ChangeNotifier {
   final List<Bomb> _bombs = [];
   final List<ExplosionTile> _explosions = [];
   final List<PowerUpItem> _powerUps = [];
+  final List<BotPlayer> _bots = [];
+
+  int _totalPlayerCount = 4; // 2, 3 veya 4
 
   // Oyuncu Durumu
   int _playerX = 1;
@@ -30,7 +33,9 @@ class GameplayViewModel extends ChangeNotifier {
   List<Bomb> get bombs => List.unmodifiable(_bombs);
   List<ExplosionTile> get explosions => List.unmodifiable(_explosions);
   List<PowerUpItem> get powerUps => List.unmodifiable(_powerUps);
+  List<BotPlayer> get bots => List.unmodifiable(_bots);
 
+  int get totalPlayerCount => _totalPlayerCount;
   int get playerX => _playerX;
   int get playerY => _playerY;
   int get health => _health;
@@ -46,11 +51,17 @@ class GameplayViewModel extends ChangeNotifier {
     startNewGame();
   }
 
+  void setPlayerCount(int count) {
+    _totalPlayerCount = count.clamp(2, 4);
+    startNewGame();
+  }
+
   void startNewGame() {
     _gameLoopTimer?.cancel();
     _bombs.clear();
     _explosions.clear();
     _powerUps.clear();
+    _bots.clear();
 
     _playerX = 1;
     _playerY = 1;
@@ -59,7 +70,33 @@ class GameplayViewModel extends ChangeNotifier {
     _bombRange = 1;
     _speed = 1.0;
     _score = 0;
-    _lastNotification = 'Oyun Başladı! Varilleri patlat, güçlendiricileri topla!';
+    _lastNotification = '$_totalPlayerCount Kişilik Arena Başladı! Varilleri patlat, güçlendiricileri topla!';
+
+    // Botları ekle (Kullanıcı resmindeki Mor ve Yeşil İtfaiyeciler!)
+    if (_totalPlayerCount >= 2) {
+      _bots.add(BotPlayer(
+        x: cols - 2,
+        y: 1,
+        name: 'Mor İtfaiyeci',
+        color: const Color(0xFFA855F7), // Mor
+      ));
+    }
+    if (_totalPlayerCount >= 3) {
+      _bots.add(BotPlayer(
+        x: 1,
+        y: rows - 2,
+        name: 'Yeşil İtfaiyeci',
+        color: const Color(0xFF22C55E), // Yeşil
+      ));
+    }
+    if (_totalPlayerCount >= 4) {
+      _bots.add(BotPlayer(
+        x: cols - 2,
+        y: rows - 2,
+        name: 'Turuncu İtfaiyeci',
+        color: const Color(0xFFF97316), // Turuncu
+      ));
+    }
 
     // Haritayı oluştur
     _grid = List.generate(rows, (r) {
@@ -68,12 +105,15 @@ class GameplayViewModel extends ChangeNotifier {
         if (r == 0 || r == rows - 1 || c == 0 || c == cols - 1) {
           return CellType.wall;
         }
-        // Sabit labirent sütunları (çift satır ve çift sütunlar)
+        // Sabit labirent sütunları
         if (r % 2 == 0 && c % 2 == 0) {
           return CellType.wall;
         }
-        // Oyuncu doğma köşeleri temiz kalmalı
-        if ((r <= 2 && c <= 2) || (r >= rows - 3 && c >= cols - 3)) {
+        // Oyuncu ve botların doğma köşeleri temiz kalmalı
+        if ((r <= 2 && c <= 2) || // Sol Üst (Oyuncu)
+            (r <= 2 && c >= cols - 3) || // Sağ Üst (Bot 1)
+            (r >= rows - 3 && c <= 2) || // Sol Alt (Bot 2)
+            (r >= rows - 3 && c >= cols - 3)) { // Sağ Alt (Bot 3)
           return CellType.empty;
         }
         // Kırmızı kırılabilir variller (%65 şansla)
@@ -92,20 +132,15 @@ class GameplayViewModel extends ChangeNotifier {
     final targetY = _playerY + dy;
 
     if (targetX < 0 || targetX >= cols || targetY < 0 || targetY >= rows) return;
-
-    // Duvar veya varil kontrolü
     if (_grid[targetY][targetX] != CellType.empty) return;
 
-    // Bomba üstüne yürüme kontrolü (zaten üstünde değilse giremez)
     final hasBombAtTarget = _bombs.any((b) => b.x == targetX && b.y == targetY);
     if (hasBombAtTarget) return;
 
     _playerX = targetX;
     _playerY = targetY;
 
-    // PowerUp toplama kontrolü
     _checkPowerUpPickup();
-
     notifyListeners();
   }
 
@@ -113,7 +148,6 @@ class GameplayViewModel extends ChangeNotifier {
     if (_health <= 0) return;
     if (_bombs.length >= _maxBombs) return;
 
-    // Zaten burada bomba var mı?
     if (_bombs.any((b) => b.x == _playerX && b.y == _playerY)) return;
 
     _bombs.add(Bomb(
@@ -174,20 +208,59 @@ class GameplayViewModel extends ChangeNotifier {
       }
     }
 
+    // Bot Yapay Zekasını Güncelle
+    _updateBots(dt);
+
     if (stateChanged) {
       notifyListeners();
+    }
+  }
+
+  void _updateBots(double dt) {
+    final random = Random();
+
+    for (final bot in _bots) {
+      if (bot.health <= 0) continue;
+
+      bot.moveCooldown -= dt;
+      if (bot.moveCooldown <= 0) {
+        bot.moveCooldown = 0.6 + random.nextDouble() * 0.4; // 0.6-1.0 sn arayla hamle
+
+        const dirs = [
+          [0, -1], [0, 1], [-1, 0], [1, 0]
+        ];
+        dirs.shuffle();
+
+        for (final dir in dirs) {
+          final nx = bot.x + dir[0];
+          final ny = bot.y + dir[1];
+
+          if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1) {
+            // Önünde varil varsa bomba bırakma şansı
+            if (_grid[ny][nx] == CellType.barrel && random.nextDouble() < 0.35) {
+              if (!_bombs.any((b) => b.x == bot.x && b.y == bot.y)) {
+                _bombs.add(Bomb(x: bot.x, y: bot.y, range: 1));
+                break;
+              }
+            }
+
+            // Boş hücreye yürü
+            if (_grid[ny][nx] == CellType.empty && !_bombs.any((b) => b.x == nx && b.y == ny)) {
+              bot.x = nx;
+              bot.y = ny;
+              break;
+            }
+          }
+        }
+      }
     }
   }
 
   void _detonateBomb(Bomb bomb) {
     _addExplosion(bomb.x, bomb.y);
 
-    // 4 yöne haç (+) şeklinde yayılma
     const directions = [
-      [0, -1], // Yukarı
-      [0, 1],  // Aşağı
-      [-1, 0], // Sol
-      [1, 0],  // Sağ
+      [0, -1], [0, 1], [-1, 0], [1, 0]
     ];
 
     for (final dir in directions) {
@@ -196,28 +269,23 @@ class GameplayViewModel extends ChangeNotifier {
         final ty = bomb.y + (dir[1] * dist);
 
         if (tx < 0 || tx >= cols || ty < 0 || ty >= rows) break;
-
-        // Sabit duvara çarparsa patlama durur
         if (_grid[ty][tx] == CellType.wall) break;
 
-        // Kırmızı varile çarparsa varil patlar ve o yönde durur
         if (_grid[ty][tx] == CellType.barrel) {
           _grid[ty][tx] = CellType.empty;
           _addExplosion(tx, ty);
           _score += 100;
 
-          // Varilden şansla (%55) power-up düşer
           _maybeDropPowerUp(tx, ty);
           break;
         }
 
-        // Başka bir bombayı tetikle (zincirleme reaksiyon)
         final otherBomb = _bombs.cast<Bomb?>().firstWhere(
           (b) => b?.x == tx && b?.y == ty,
           orElse: () => null,
         );
         if (otherBomb != null) {
-          otherBomb.timeLeft = 0.05; // anında patlat
+          otherBomb.timeLeft = 0.05;
         }
 
         _addExplosion(tx, ty);
@@ -228,13 +296,29 @@ class GameplayViewModel extends ChangeNotifier {
   void _addExplosion(int x, int y) {
     _explosions.add(ExplosionTile(x: x, y: y));
 
-    // Oyuncu patlama alanında mı?
+    // Oyuncu hasarı
     if (_playerX == x && _playerY == y) {
       _health = max(0, _health - 25);
       _lastNotification = '⚠️ Hasar aldın! Kalan Can: $_health HP';
       if (_health <= 0) {
         _lastNotification = '💀 Kaybettin! Yeniden başlatabilirsin.';
       }
+    }
+
+    // Bot hasarı
+    for (final bot in _bots) {
+      if (bot.x == x && bot.y == y && bot.health > 0) {
+        bot.health -= 50;
+        if (bot.health <= 0) {
+          _score += 300;
+          _lastNotification = '🎯 ${bot.name} elendi! +300 Puan!';
+        }
+      }
+    }
+
+    // Zafer kontrolü: Oyuncu hayatta ve tüm botlar elendiyse
+    if (_health > 0 && _bots.isNotEmpty && _bots.every((b) => b.health <= 0)) {
+      _lastNotification = '🏆 TEBRİKLER! Tüm rakipleri yendin, ARENA ŞAMPİYONUSUN!';
     }
   }
 

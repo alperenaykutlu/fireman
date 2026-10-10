@@ -304,10 +304,18 @@ class BombermanPainter extends CustomPainter {
       _drawExplosion(canvas, rect);
     }
 
-    // 5. OYUNCUYU ÇİZ (Mavi İtfaiyeci)
+    // 5. BOTLARI ÇİZ (Mor, Yeşil, Turuncu İtfaiyeciler)
+    for (final bot in vm.bots) {
+      if (bot.health > 0) {
+        final bCenter = Offset((bot.x + 0.5) * cellW, (bot.y + 0.5) * cellH);
+        _drawPlayer(canvas, bCenter, cellW * 0.42, bodyColor: bot.color);
+      }
+    }
+
+    // 6. OYUNCUYU ÇİZ (Mavi İtfaiyeci)
     if (vm.health > 0) {
       final pCenter = Offset((vm.playerX + 0.5) * cellW, (vm.playerY + 0.5) * cellH);
-      _drawPlayer(canvas, pCenter, cellW * 0.42);
+      _drawPlayer(canvas, pCenter, cellW * 0.42, bodyColor: const Color(0xFF0284C7));
     }
   }
 
@@ -326,25 +334,24 @@ class BombermanPainter extends CustomPainter {
   }
 
   void _drawPowerUp(Canvas canvas, Rect rect, PowerUpType type) {
-    // Arka plan kutusu
     Color boxColor;
     String emoji;
 
     switch (type) {
       case PowerUpType.lightning:
-        boxColor = const Color(0xFF1E40AF); // Mavi kutu
+        boxColor = const Color(0xFF1E40AF);
         emoji = '⚡';
         break;
       case PowerUpType.shoe:
-        boxColor = const Color(0xFF065F46); // Yeşil/Mavi kutu
+        boxColor = const Color(0xFF065F46);
         emoji = '👟';
         break;
       case PowerUpType.extraBomb:
-        boxColor = const Color(0xFF7F1D1D); // Kırmızı kutu
+        boxColor = const Color(0xFF7F1D1D);
         emoji = '💣';
         break;
       case PowerUpType.heal:
-        boxColor = const Color(0xFF854D0E); // Altın/Sarı kutu
+        boxColor = const Color(0xFF854D0E);
         emoji = '🔧';
         break;
     }
@@ -352,7 +359,6 @@ class BombermanPainter extends CustomPainter {
     final bgPaint = Paint()..color = boxColor;
     canvas.drawRRect(RRect.fromRectAndRadius(rect.deflate(4), const Radius.circular(6)), bgPaint);
 
-    // İkonu çiz
     final textPainter = TextPainter(
       text: TextSpan(text: emoji, style: TextStyle(fontSize: rect.width * 0.55)),
       textDirection: TextDirection.ltr,
@@ -361,22 +367,18 @@ class BombermanPainter extends CustomPainter {
   }
 
   void _drawBomb(Canvas canvas, Offset center, double radius) {
-    // Siyah/Kırmızı bomba gövdesi
     final bombPaint = Paint()..color = const Color(0xFF1E293B);
     canvas.drawCircle(center, radius, bombPaint);
 
-    // Bomba fitili
     final fusePaint = Paint()
       ..color = Colors.amber
       ..strokeWidth = 3;
     canvas.drawLine(Offset(center.dx, center.dy - radius), Offset(center.dx + 4, center.dy - radius - 6), fusePaint);
 
-    // Kıvılcım
     canvas.drawCircle(Offset(center.dx + 4, center.dy - radius - 6), 3, Paint()..color = Colors.redAccent);
   }
 
   void _drawExplosion(Canvas canvas, Rect rect) {
-    // Playing with Fire 2'deki parlak mavi elektrik/alev paterni
     final outerPaint = Paint()..color = const Color(0xCC38BDF8);
     canvas.drawRect(rect, outerPaint);
 
@@ -384,13 +386,13 @@ class BombermanPainter extends CustomPainter {
     canvas.drawRect(rect.deflate(6), innerPaint);
   }
 
-  void _drawPlayer(Canvas canvas, Offset center, double radius) {
-    // Gövde (Mavi İtfaiyeci)
-    final bodyPaint = Paint()..color = const Color(0xFF0284C7);
+  void _drawPlayer(Canvas canvas, Offset center, double radius, {required Color bodyColor}) {
+    // Gövde
+    final bodyPaint = Paint()..color = bodyColor;
     canvas.drawCircle(center, radius, bodyPaint);
 
-    // Şapka / Kask (Kullanıcı görselindeki açık mavi/yeşil kask)
-    final hatPaint = Paint()..color = const Color(0xFF38BDF8);
+    // Şapka / Kask
+    final hatPaint = Paint()..color = Colors.white70;
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       3.14,
@@ -399,10 +401,11 @@ class BombermanPainter extends CustomPainter {
       hatPaint,
     );
 
-    // Yüz & Gözler
+    // Yüz
     final facePaint = Paint()..color = const Color(0xFFFFD1A4);
     canvas.drawCircle(Offset(center.dx, center.dy + 2), radius * 0.5, facePaint);
 
+    // Gözler
     final eyePaint = Paint()..color = Colors.black;
     canvas.drawCircle(Offset(center.dx - 3, center.dy + 2), 1.5, eyePaint);
     canvas.drawCircle(Offset(center.dx + 3, center.dy + 2), 1.5, eyePaint);
