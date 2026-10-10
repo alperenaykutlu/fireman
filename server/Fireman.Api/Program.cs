@@ -106,6 +106,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<Fireman.Api.Hubs.MatchHub>("/hubs/match");
+app.MapHub<Fireman.Api.Hubs.SocialHub>("/hubs/social");
 app.MapHealthChecks("/health");
 
 // Remote Config Endpoint (LiveOps WP18)
