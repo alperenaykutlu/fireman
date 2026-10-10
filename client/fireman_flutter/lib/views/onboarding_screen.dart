@@ -49,6 +49,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
     if (_userProfile!.username.isNotEmpty) {
       _usernameController.text = _userProfile!.username;
     }
+
+    final hasCompleted = await UserProfile.hasCompletedOnboarding();
+    if (hasCompleted && mounted && _userProfile!.username.isNotEmpty) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => MainMenuScreen(profile: _userProfile!),
+        ),
+      );
+    }
   }
 
   Future<void> _startSequence() async {
@@ -94,6 +103,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
     if (_userProfile != null) {
       _userProfile!.username = name;
       await _userProfile!.save();
+      await UserProfile.setOnboardingCompleted();
     }
 
     if (!mounted) return;

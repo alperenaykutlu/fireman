@@ -20,6 +20,17 @@ class UserProfile {
   static const String keyPlayed = 'fireman_played';
   static const String keyWon = 'fireman_won';
   static const String keyRank = 'fireman_rank';
+  static const String keyHasCompletedOnboarding = 'fireman_onboarding_done';
+
+  static Future<bool> hasCompletedOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(keyHasCompletedOnboarding) ?? false;
+  }
+
+  static Future<void> setOnboardingCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyHasCompletedOnboarding, true);
+  }
 
   static Future<UserProfile> load() async {
     final prefs = await SharedPreferences.getInstance();

@@ -1,6 +1,5 @@
 using Fireman.Contracts.Matches;
 using Fireman.Domain.AntiCheat;
-using Fireman.Shared.Results;
 
 namespace Fireman.Application.AntiCheat;
 
@@ -12,24 +11,17 @@ public record ValidationOutcome(
 
 public interface IAntiCheatValidationService
 {
-    Task<ValidationOutcome> ValidateMovementAsync(
+    Task<ValidationOutcome> ValidateInputAsync(
         Guid userId,
-        PlayerMovementDto newMovement,
-        PlayerMovementDto? previousMovement,
+        PlayerInputDto newInput,
+        PlayerInputDto? previousInput,
         double deltaSeconds,
         CancellationToken cancellationToken = default);
 
     Task<ValidationOutcome> ValidateScoreSubmissionAsync(
         Guid userId,
         int scoreDelta,
-        int rescuesDelta,
+        int killsDelta,
         double elapsedSeconds,
-        CancellationToken cancellationToken = default);
-
-    Task<ValidationOutcome> ValidateWaterSuppressionAsync(
-        Guid userId,
-        float waterSpent,
-        float fireExtinguished,
-        double deltaSeconds,
         CancellationToken cancellationToken = default);
 }

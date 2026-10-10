@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\server\Fireman.Domain\Fireman.Domain.csproj" />
     <ProjectReference Include="..\..\server\Fireman.Application\Fireman.Application.csproj" />
+    <ProjectReference Include="..\..\server\Fireman.GameCore\Fireman.GameCore.csproj" />
     <ProjectReference Include="..\..\server\Fireman.Shared\Fireman.Shared.csproj" />
   </ItemGroup>
 

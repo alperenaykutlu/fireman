@@ -10,11 +10,13 @@ namespace Fireman.Application.AntiCheat;
 
 public class AntiCheatValidationService : IAntiCheatValidationService
 {
-    private const double MaxAllowedSpeedUnitsPerSec = 16.0; // Maksimum izin verilen hareket hızı
-    private const double TeleportThresholdUnitsPerSec = 40.0; // Işınlanma eşiği
-    private const double MaxScorePerSecond = 200.0;
-    private const int MaxScorePerRescue = 3000;
-    private const float MaxWaterConsumptionPerSec = 50.0f;
+    // Grid-based limits: 256 sub-units = 1 tile.
+    // Max movement speed is ~16 sub-units per tick (approx 2 tiles/sec at 30 ticks/s).
+    // Allow up to 32 sub-units per tick margin for latency/speed powerups.
+    private const int MaxAllowedSubUnitDeltaPerTick = 32;
+    private const int TeleportSubUnitThreshold = 128; // Half a tile jump in a single tick
+    private const double MaxScorePerSecond = 500.0;
+    private const int MaxScorePerKill = 2500;
 
     private readonly IAntiCheatRepository _antiCheatRepository;
     private readonly IUserRepository _userRepository;
@@ -33,61 +35,63 @@ public class AntiCheatValidationService : IAntiCheatValidationService
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<ValidationOutcome> ValidateMovementAsync(
+    public async Task<ValidationOutcome> ValidateInputAsync(
         Guid userId,
-        PlayerMovementDto newMovement,
-        PlayerMovementDto? previousMovement,
+        PlayerInputDto newInput,
+        PlayerInputDto? previousInput,
         double deltaSeconds,
         CancellationToken cancellationToken = default)
     {
-        if (previousMovement is null)
+        if (previousInput is null)
             return new ValidationOutcome(true);
 
-        if (deltaSeconds <= 0.001)
+        // Sequence number replay/rewind check
+        if (newInput.Seq <= previousInput.Seq)
         {
-            // Zaman manipülasyonu ya da aşırı sık sahte paket
             var log = await RecordViolationAsync(
                 userId,
-                "MovementValidation",
-                "Non-positive delta time detected between movement updates.",
+                "SequenceNumberAnomaly",
+                $"Incoming packet seq {newInput.Seq} is not strictly greater than previous {previousInput.Seq}.",
                 AntiCheatSeverity.Medium,
-                new { deltaSeconds },
+                new { NewSeq = newInput.Seq, PrevSeq = previousInput.Seq },
                 cancellationToken);
 
-            return new ValidationOutcome(false, "Invalid movement delta time.", log);
+            return new ValidationOutcome(false, "Invalid packet sequence order.", log);
         }
 
-        double dx = newMovement.PosX - previousMovement.PosX;
-        double dy = newMovement.PosY - previousMovement.PosY;
-        double dz = newMovement.PosZ - previousMovement.PosZ;
-        double distance = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
-        double calculatedSpeed = distance / deltaSeconds;
+        // Sub-tile distance validation
+        int dx = Math.Abs(newInput.SubTileX - previousInput.SubTileX);
+        int dy = Math.Abs(newInput.SubTileY - previousInput.SubTileY);
+        int maxDelta = Math.Max(dx, dy);
 
-        if (calculatedSpeed > TeleportThresholdUnitsPerSec)
+        long tickDelta = Math.Max(1, newInput.ClientTick - previousInput.ClientTick);
+        int maxAllowedDelta = (int)(MaxAllowedSubUnitDeltaPerTick * tickDelta);
+
+        if (maxDelta > TeleportSubUnitThreshold * tickDelta)
         {
             var log = await RecordViolationAsync(
                 userId,
                 "TeleportationDetected",
-                $"Player moved {distance:F2} units in {deltaSeconds:F3}s (Calculated speed: {calculatedSpeed:F2} units/s).",
+                $"Player teleported {maxDelta} sub-units across {tickDelta} ticks (Threshold: {TeleportSubUnitThreshold * tickDelta}).",
                 AntiCheatSeverity.Critical,
-                new { distance, deltaSeconds, calculatedSpeed, TeleportThresholdUnitsPerSec },
+                new { maxDelta, tickDelta, newX = newInput.SubTileX, newY = newInput.SubTileY },
                 cancellationToken);
 
-            await PenalizeUserAsync(userId, "Automated AntiCheat: Teleportation detected", cancellationToken);
+            await PenalizeUserAsync(userId, "Automated AntiCheat: Teleportation detected on grid", cancellationToken);
             return new ValidationOutcome(false, "Teleportation anomaly detected.", log);
         }
 
-        if (calculatedSpeed > MaxAllowedSpeedUnitsPerSec)
+        if (maxDelta > maxAllowedDelta)
         {
             var log = await RecordViolationAsync(
                 userId,
                 "SpeedHackDetected",
-                $"Player speed exceeded threshold: {calculatedSpeed:F2} units/s (Max: {MaxAllowedSpeedUnitsPerSec}).",
+                $"Player moved {maxDelta} sub-units exceeding maximum allowed {maxAllowedDelta}.",
                 AntiCheatSeverity.High,
-                new { distance, deltaSeconds, calculatedSpeed, MaxAllowedSpeedUnitsPerSec },
+                new { maxDelta, maxAllowedDelta, tickDelta },
                 cancellationToken);
 
-            return new ValidationOutcome(false, "Movement speed exceeds allowed limits.", log);
+            return new ValidationOutcome(false, "Movement speed exceeds allowed grid limit.", log);
         }
 
         return new ValidationOutcome(true);
@@ -96,18 +100,18 @@ public class AntiCheatValidationService : IAntiCheatValidationService
     public async Task<ValidationOutcome> ValidateScoreSubmissionAsync(
         Guid userId,
         int scoreDelta,
-        int rescuesDelta,
+        int killsDelta,
         double elapsedSeconds,
         CancellationToken cancellationToken = default)
     {
-        if (scoreDelta < 0 || rescuesDelta < 0)
+        if (scoreDelta < 0 || killsDelta < 0)
         {
             var log = await RecordViolationAsync(
                 userId,
                 "NegativeScoreDelta",
-                "Negative score or rescue count reported.",
+                "Negative score or kill count reported.",
                 AntiCheatSeverity.High,
-                new { scoreDelta, rescuesDelta },
+                new { scoreDelta, killsDelta },
                 cancellationToken);
 
             return new ValidationOutcome(false, "Invalid negative score delta.", log);
@@ -130,57 +134,17 @@ public class AntiCheatValidationService : IAntiCheatValidationService
             }
         }
 
-        if (rescuesDelta > 0 && (scoreDelta / rescuesDelta) > MaxScorePerRescue)
+        if (killsDelta > 0 && (scoreDelta / killsDelta) > MaxScorePerKill)
         {
             var log = await RecordViolationAsync(
                 userId,
-                "ExcessiveScorePerRescue",
-                $"Score per rescue ratio {scoreDelta / rescuesDelta} exceeds max {MaxScorePerRescue}.",
+                "ExcessiveScorePerKill",
+                $"Score per kill ratio {scoreDelta / killsDelta} exceeds max {MaxScorePerKill}.",
                 AntiCheatSeverity.Medium,
-                new { scoreDelta, rescuesDelta, MaxScorePerRescue },
+                new { scoreDelta, killsDelta, MaxScorePerKill },
                 cancellationToken);
 
-            return new ValidationOutcome(false, "Score per rescue exceeds upper bound.", log);
-        }
-
-        return new ValidationOutcome(true);
-    }
-
-    public async Task<ValidationOutcome> ValidateWaterSuppressionAsync(
-        Guid userId,
-        float waterSpent,
-        float fireExtinguished,
-        double deltaSeconds,
-        CancellationToken cancellationToken = default)
-    {
-        if (waterSpent < 0 || fireExtinguished < 0)
-        {
-            var log = await RecordViolationAsync(
-                userId,
-                "NegativeWaterSuppression",
-                "Negative water consumption or fire value submitted.",
-                AntiCheatSeverity.Medium,
-                new { waterSpent, fireExtinguished },
-                cancellationToken);
-
-            return new ValidationOutcome(false, "Invalid negative water parameters.", log);
-        }
-
-        if (deltaSeconds > 0)
-        {
-            float rate = (float)(waterSpent / deltaSeconds);
-            if (rate > MaxWaterConsumptionPerSec)
-            {
-                var log = await RecordViolationAsync(
-                    userId,
-                    "InfiniteWaterHackSuspected",
-                    $"Water spent rate {rate:F1}/s exceeds nozzle maximum {MaxWaterConsumptionPerSec}/s.",
-                    AntiCheatSeverity.High,
-                    new { waterSpent, deltaSeconds, rate },
-                    cancellationToken);
-
-                return new ValidationOutcome(false, "Water discharge rate exceeds capacity.", log);
-            }
+            return new ValidationOutcome(false, "Score per kill exceeds upper bound.", log);
         }
 
         return new ValidationOutcome(true);

@@ -1,0 +1,53 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: fireman_db
+          POSTGRES_USER: fireman
+          POSTGRES_PASSWORD: fireman_secret_password_2026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore server/Fireman.Api/Fireman.Api.csproj
+
+    - name: Build backend
+      run: dotnet build server/Fireman.Api/Fireman.Api.csproj --no-restore --configuration Release
+
+    - name: Run unit tests
+      run: dotnet test tests/Fireman.UnitTests/Fireman.UnitTests.csproj --configuration Release --no-build --verbosity normal
