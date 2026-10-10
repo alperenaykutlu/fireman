@@ -38,8 +38,9 @@ builder.Services.AddCors(options =>
     });
 });
 
-// SignalR for real-time multiplayer
-builder.Services.AddSignalR();
+// SignalR for real-time multiplayer with MessagePack binary serialization
+builder.Services.AddSignalR()
+    .AddMessagePackProtocol();
 
 // Health Checks (Section 61)
 builder.Services.AddHealthChecks();
