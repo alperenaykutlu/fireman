@@ -49,9 +49,10 @@ public static class DependencyInjection
         services.AddScoped<Fireman.Domain.Seasons.ISeasonRepository, Fireman.Infrastructure.Persistence.Repositories.SeasonRepository>();
         services.AddScoped<Fireman.Domain.Notifications.INotificationRepository, Fireman.Infrastructure.Persistence.Repositories.NotificationRepository>();
 
-        // Feature Flags & Remote Config
+        // Feature Flags, Remote Config & IAP Validation
         services.AddSingleton<IFeatureFlagService, Fireman.Infrastructure.Services.FeatureFlagService>();
         services.AddSingleton<IRemoteConfigService, Fireman.Infrastructure.Services.RemoteConfigService>();
+        services.AddSingleton<Fireman.Infrastructure.Services.IIapReceiptValidationService, Fireman.Infrastructure.Services.IapReceiptValidationService>();
 
         // Idempotency
         services.AddSingleton<IIdempotencyService, Fireman.Infrastructure.Persistence.IdempotencyService>();
