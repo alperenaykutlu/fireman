@@ -42,6 +42,9 @@ builder.Services.AddCors(options =>
 builder.Services.AddSignalR()
     .AddMessagePackProtocol();
 
+// Authoritative GameCore Match Simulation Host Manager (30Hz tick)
+builder.Services.AddSingleton<Fireman.Api.Hubs.IMatchHostManager, Fireman.Api.Hubs.MatchHostManager>();
+
 // Health Checks (Section 61)
 builder.Services.AddHealthChecks();
 

@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Fireman.Application\Fireman.Application.csproj" />
+    <ProjectReference Include="..\Fireman.GameCore\Fireman.GameCore.csproj" />
     <ProjectReference Include="..\Fireman.Infrastructure\Fireman.Infrastructure.csproj" />
     <ProjectReference Include="..\Fireman.Contracts\Fireman.Contracts.csproj" />
     <ProjectReference Include="..\Fireman.Shared\Fireman.Shared.csproj" />

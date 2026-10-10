@@ -11,22 +11,28 @@ public class MatchHub : Hub
     private readonly ICurrentUser _currentUser;
     private readonly ILogger<MatchHub> _logger;
     private readonly Fireman.Application.AntiCheat.IAntiCheatValidationService _antiCheatService;
+    private readonly IMatchHostManager _matchHostManager;
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (PlayerInputDto LastInput, DateTime Timestamp)> _lastInputs = new();
 
     public MatchHub(
         ICurrentUser currentUser,
         ILogger<MatchHub> logger,
-        Fireman.Application.AntiCheat.IAntiCheatValidationService antiCheatService)
+        Fireman.Application.AntiCheat.IAntiCheatValidationService antiCheatService,
+        IMatchHostManager matchHostManager)
     {
         _currentUser = currentUser;
         _logger = logger;
         _antiCheatService = antiCheatService;
+        _matchHostManager = matchHostManager;
     }
 
     public async Task JoinMatchRoom(string matchId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, matchId);
         _logger.LogInformation("User {UserId} joined match room {MatchId}", _currentUser.UserId, matchId);
+
+        // Ensure 30Hz MatchSimulation host is running for this room
+        _matchHostManager.CreateOrJoinMatch(matchId, playerCount: 4);
 
         await Clients.OthersInGroup(matchId).SendAsync("PlayerJoined", new
         {
@@ -78,7 +84,10 @@ public class MatchHub : Hub
 
         _lastInputs[userId] = (input, now);
 
-        // Broadcast input to match room / simulation host
+        // 1. Direct feed to 30Hz authoritative GameCore loop
+        _matchHostManager.EnqueueInput(matchId, input);
+
+        // 2. Broadcast input for peer prediction / client interpolation
         await Clients.OthersInGroup(matchId).SendAsync("PlayerInputReceived", input);
     }
 

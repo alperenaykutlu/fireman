@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../viewmodels/match_viewmodel.dart';
+import 'gameplay_screen.dart';
 
 class LobbyScreen extends StatelessWidget {
   const LobbyScreen({super.key});
@@ -82,6 +83,23 @@ class LobbyScreen extends StatelessWidget {
               _buildPlayerRow('🧑‍🚒 İtfaiyeci Ahmet (Siz)', true),
               const SizedBox(height: 8),
               _buildPlayerRow('🧑‍🚒 Demir_Hortum', false),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppConstants.fireRed,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const GameplayScreen()),
+                  );
+                },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('ARENAYA GİR (BAŞLAT)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
             ],
           ],
         ),
