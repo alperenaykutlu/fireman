@@ -108,6 +108,13 @@ app.MapControllers();
 app.MapHub<Fireman.Api.Hubs.MatchHub>("/hubs/match");
 app.MapHealthChecks("/health");
 
+// Remote Config Endpoint (LiveOps WP18)
+app.MapGet("/api/v1/config/{key}", async (string key, Fireman.Application.Common.Interfaces.IRemoteConfigService configService, CancellationToken ct) =>
+{
+    var configJson = await configService.GetConfigJsonAsync(key, null, ct);
+    return Results.Content(configJson, "application/json");
+}).AllowAnonymous();
+
 app.Run();
 
 // For integration tests WebApplicationFactory

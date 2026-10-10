@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "lastUpdated": "2026-10-10T18:40:00Z",
+  "gameplay": {
+    "grid": {
+      "columns": 11,
+      "rows": 9,
+      "subUnitsPerTile": 256
+    },
+    "simulation": {
+      "tickRateHz": 30,
+      "fuseTicks": 66,
+      "flameDurationTicks": 15,
+      "basePlayerSpeedSubUnitsPerTick": 8,
+      "maxPlayerSpeedSubUnitsPerTick": 16,
+      "maxBombCapacity": 6,
+      "maxBombRange": 8
+    },
+    "drops": {
+      "barrelDensityPercent": 65,
+      "powerUpDropRatePercent": 40,
+      "weights": {
+        "lightning": 25,
+        "shoe": 25,
+        "bomb": 35,
+        "heal": 15
+      }
+    }
+  },
+  "economy": {
+    "currencies": ["Gold", "Gems"],
+    "matchRewards": {
+      "winnerGold": 150,
+      "participationGold": 30,
+      "killGold": 25,
+      "winnerXp": 250,
+      "participationXp": 50
+    },
+    "battlePass": {
+      "seasonNumber": 1,
+      "xpPerTier": 1000,
+      "totalTiers": 50,
+      "premiumPriceGems": 500
+    }
+  },
+  "matchmaking": {
+    "targetRttMs": 80,
+    "maxWaitBeforeBotFillSeconds": 20,
+    "regions": ["me-tr", "eu-central", "na-east"]
+  }
+}
