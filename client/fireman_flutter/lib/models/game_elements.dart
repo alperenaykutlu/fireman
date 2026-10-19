@@ -2,28 +2,37 @@ import 'package:flutter/material.dart';
 
 enum CellType {
   empty,
-  wall,       // Kırılmaz sabit blok
-  barrel,     // Kırmızı patlatılabilir varil
+  wall,         // Kırılmaz bej/taş sütun blok
+  barrel,       // Patlatılabilir kırmızı/bordo varil
+  suddenDeath,  // Süre bitince etraftan saran ölümcül bloklar
 }
 
 enum PowerUpType {
-  lightning,  // Şimşek: Bomba menzili/şiddeti +1
-  shoe,       // Ayakkabı: Hız artışı
-  extraBomb,  // Bomba: +1 bomba hakkı
-  heal,       // Tamir: Can iyileştirme
+  dynamiteRange, // Şimşek / fitil: Dinamit patlama menzili +1
+  rollerSkate,   // Paten / ayakkabı: Hareket hızı artışı
+  extraDynamite, // Dinamit: +1 dinamit koyma hakkı
+  shield,        // Zırh / can: Ekstra can/koruma
 }
 
-class Bomb {
-  final int x;
-  final int y;
+class Dynamite {
+  int x;
+  int y;
   final int range;
-  double timeLeft; // saniye cinsinden
+  final int ownerId; // 0: Oyuncu, 1..N: Botlar
+  double timeLeft;   // Patlama süresi (saniye)
+  int slideDx;       // Kayma yönü X (-1, 0, 1)
+  int slideDy;       // Kayma yönü Y (-1, 0, 1)
+  double slideCooldown;
 
-  Bomb({
+  Dynamite({
     required this.x,
     required this.y,
     required this.range,
+    this.ownerId = 0,
     this.timeLeft = 2.4,
+    this.slideDx = 0,
+    this.slideDy = 0,
+    this.slideCooldown = 0.0,
   });
 }
 
@@ -31,11 +40,13 @@ class ExplosionTile {
   final int x;
   final int y;
   double duration;
+  final bool isCenter;
 
   ExplosionTile({
     required this.x,
     required this.y,
-    this.duration = 0.5,
+    this.duration = 0.35, // Daha akıcı patlama süresi
+    this.isCenter = false,
   });
 }
 
@@ -51,20 +62,41 @@ class PowerUpItem {
   });
 }
 
-class BotPlayer {
+enum PlayerStatus {
+  alive,
+  eliminated,
+}
+
+class ArenaFighter {
+  final int id;
+  final String name;
+  final Color hatColor;
+  final Color bodyColor;
+  final bool isHuman;
   int x;
   int y;
   int health;
-  final String name;
-  final Color color;
+  int wins;
+  int maxDynamites;
+  int dynamiteRange;
+  double speed;
   double moveCooldown;
+  PlayerStatus status;
 
-  BotPlayer({
+  ArenaFighter({
+    required this.id,
+    required this.name,
+    required this.hatColor,
+    required this.bodyColor,
+    this.isHuman = false,
     required this.x,
     required this.y,
     this.health = 100,
-    required this.name,
-    required this.color,
+    this.wins = 0,
+    this.maxDynamites = 1,
+    this.dynamiteRange = 1,
+    this.speed = 0.7,
     this.moveCooldown = 0.0,
+    this.status = PlayerStatus.alive,
   });
 }

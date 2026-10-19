@@ -1,6 +1,6 @@
 # Fireman Mobile - Sistem ve Mimari Genel Bakış
 
-Bu dokümantasyon, [Fireman_Mobile_Teknik_Mimari.md](file:///C:/Users/alper/Desktop/fireman/Fireman_Mobile_Teknik_Mimari.md) teknik şartnamesine uygun olarak inşa edilen çözümün genel mimarisini açıklar.
+Bu dokümantasyon, [Fireman_Mobile_Teknik_Mimari.md](../../Fireman_Mobile_Teknik_Mimari.md) teknik şartnamesine uygun olarak inşa edilen çözümün genel mimarisini açıklar.
 
 ## 1. Solution Mimarisi
 

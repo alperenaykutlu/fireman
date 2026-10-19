@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/character/animated_character_painter.dart';
+import '../core/character/character_state.dart';
 import '../core/constants.dart';
 import '../viewmodels/character_viewmodel.dart';
 
@@ -61,7 +63,11 @@ class _CharacterScreenState extends State<CharacterScreen> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: AppConstants.borderCard),
                           ),
-                          child: const Text('🧑‍🚒', style: TextStyle(fontSize: 48)),
+                          child: const AnimatedFirefighterWidget(
+                            size: 64,
+                            state: CharacterAnimState.idle,
+                            showShadow: false,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(

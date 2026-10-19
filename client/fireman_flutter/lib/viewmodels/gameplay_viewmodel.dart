@@ -4,51 +4,101 @@ import 'package:flutter/material.dart';
 import '../models/game_elements.dart';
 
 class GameplayViewModel extends ChangeNotifier {
-  static const int cols = 11;
-  static const int rows = 9;
+  // Klasik Playing with Fire 2 / Bomberman Haritası (15 x 13)
+  static const int cols = 15;
+  static const int rows = 13;
 
   late List<List<CellType>> _grid;
-  final List<Bomb> _bombs = [];
+  final List<Dynamite> _dynamites = [];
   final List<ExplosionTile> _explosions = [];
   final List<PowerUpItem> _powerUps = [];
-  final List<BotPlayer> _bots = [];
+  final List<ArenaFighter> _fighters = [];
 
-  int _totalPlayerCount = 4; // 2, 3 veya 4
-
-  // Oyuncu Durumu
-  int _playerX = 1;
-  int _playerY = 1;
-  int _health = 100;
-  final int _maxHealth = 100;
-  int _maxBombs = 1;
-  int _bombRange = 1;
-  double _speed = 1.0;
+  int _totalPlayerCount = 4;
   int _score = 0;
   String? _lastNotification;
-
   Timer? _gameLoopTimer;
+  final Random _random = Random();
+
+  // 2 Dakikalık Maç Süresi ve Ani Ölüm (Sudden Death)
+  double _remainingSeconds = 120.0;
+  bool _isSuddenDeath = false;
+  int _suddenDeathStep = 0;
+  final List<Point<int>> _spiralOrder = [];
+
+  // Oyun Bitti (Game Over) Durumu
+  bool _isGameOver = false;
+  String? _gameOverTitle;
+  String? _gameOverMessage;
+
+  // Kesintisiz Basılı Tutma Hareketi (Continuous Movement)
+  int _holdDx = 0;
+  int _holdDy = 0;
+  double _playerMoveCooldown = 0.0;
 
   // Getters
   List<List<CellType>> get grid => _grid;
-  List<Bomb> get bombs => List.unmodifiable(_bombs);
+  List<Dynamite> get dynamites => List.unmodifiable(_dynamites);
   List<ExplosionTile> get explosions => List.unmodifiable(_explosions);
   List<PowerUpItem> get powerUps => List.unmodifiable(_powerUps);
-  List<BotPlayer> get bots => List.unmodifiable(_bots);
+  List<ArenaFighter> get fighters => List.unmodifiable(_fighters);
 
+  ArenaFighter get humanPlayer => _fighters.firstWhere((f) => f.isHuman, orElse: () => _fighters.first);
   int get totalPlayerCount => _totalPlayerCount;
-  int get playerX => _playerX;
-  int get playerY => _playerY;
-  int get health => _health;
-  int get maxHealth => _maxHealth;
-  int get maxBombs => _maxBombs;
-  int get bombRange => _bombRange;
-  double get speed => _speed;
   int get score => _score;
   String? get lastNotification => _lastNotification;
-  int get activeBombsCount => _bombs.length;
+  int get activeDynamiteCount => _dynamites.where((d) => d.ownerId == humanPlayer.id).length;
+  double get remainingSeconds => _remainingSeconds;
+  bool get isSuddenDeath => _isSuddenDeath;
+  bool get isGameOver => _isGameOver;
+  String? get gameOverTitle => _gameOverTitle;
+  String? get gameOverMessage => _gameOverMessage;
+  int get holdDx => _holdDx;
+  int get holdDy => _holdDy;
+  bool get isHumanMoving => _holdDx != 0 || _holdDy != 0;
+
+  String get formattedTimer {
+    final s = _remainingSeconds.ceil();
+    if (s <= 0) return 'ANİ ÖLÜM!';
+    final m = s ~/ 60;
+    final sec = s % 60;
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
 
   GameplayViewModel() {
+    _initSpiralOrder();
     startNewGame();
+  }
+
+  void _initSpiralOrder() {
+    _spiralOrder.clear();
+    int top = 1;
+    int bottom = rows - 2;
+    int left = 1;
+    int right = cols - 2;
+
+    while (top <= bottom && left <= right) {
+      for (int c = left; c <= right; c++) {
+        _spiralOrder.add(Point(c, top));
+      }
+      top++;
+      for (int r = top; r <= bottom; r++) {
+        _spiralOrder.add(Point(right, r));
+      }
+      right--;
+      if (top <= bottom) {
+        for (int c = right; c >= left; c--) {
+          _spiralOrder.add(Point(c, bottom));
+        }
+        bottom--;
+      }
+      if (left <= right) {
+        for (int r = bottom; r >= top; r--) {
+          _spiralOrder.add(Point(left, r));
+        }
+        left++;
+      }
+    }
   }
 
   void setPlayerCount(int count) {
@@ -58,138 +108,280 @@ class GameplayViewModel extends ChangeNotifier {
 
   void startNewGame() {
     _gameLoopTimer?.cancel();
-    _bombs.clear();
+    _dynamites.clear();
     _explosions.clear();
     _powerUps.clear();
-    _bots.clear();
+    _fighters.clear();
 
-    _playerX = 1;
-    _playerY = 1;
-    _health = 100;
-    _maxBombs = 1;
-    _bombRange = 1;
-    _speed = 1.0;
-    _score = 0;
-    _lastNotification = '$_totalPlayerCount Kişilik Arena Başladı! Varilleri patlat, güçlendiricileri topla!';
+    _remainingSeconds = 120.0;
+    _isSuddenDeath = false;
+    _suddenDeathStep = 0;
+    _holdDx = 0;
+    _holdDy = 0;
+    _playerMoveCooldown = 0.0;
+    _isGameOver = false;
+    _gameOverTitle = null;
+    _gameOverMessage = null;
 
-    // Botları ekle (Kullanıcı resmindeki Mor ve Yeşil İtfaiyeciler!)
+    // 1. DÖRT KARAKTERİ OLUŞTUR (Başlangıç Hızı: 0.7)
+    _fighters.add(ArenaFighter(
+      id: 0,
+      name: 'Oyuncu 1',
+      hatColor: const Color(0xFF1D4ED8),
+      bodyColor: const Color(0xFF2563EB),
+      isHuman: true,
+      x: 1,
+      y: 1,
+      speed: 0.7,
+    ));
+
     if (_totalPlayerCount >= 2) {
-      _bots.add(BotPlayer(
+      _fighters.add(ArenaFighter(
+        id: 1,
+        name: 'Kırmızı',
+        hatColor: const Color(0xFFB91C1C),
+        bodyColor: const Color(0xFFDC2626),
+        isHuman: false,
+        x: cols - 2,
+        y: rows - 2,
+        speed: 0.7,
+      ));
+    }
+
+    if (_totalPlayerCount >= 3) {
+      _fighters.add(ArenaFighter(
+        id: 2,
+        name: 'Yeşil',
+        hatColor: const Color(0xFF15803D),
+        bodyColor: const Color(0xFF16A34A),
+        isHuman: false,
         x: cols - 2,
         y: 1,
-        name: 'Mor İtfaiyeci',
-        color: const Color(0xFFA855F7), // Mor
-      ));
-    }
-    if (_totalPlayerCount >= 3) {
-      _bots.add(BotPlayer(
-        x: 1,
-        y: rows - 2,
-        name: 'Yeşil İtfaiyeci',
-        color: const Color(0xFF22C55E), // Yeşil
-      ));
-    }
-    if (_totalPlayerCount >= 4) {
-      _bots.add(BotPlayer(
-        x: cols - 2,
-        y: rows - 2,
-        name: 'Turuncu İtfaiyeci',
-        color: const Color(0xFFF97316), // Turuncu
+        speed: 0.7,
       ));
     }
 
-    // Haritayı oluştur
+    if (_totalPlayerCount >= 4) {
+      _fighters.add(ArenaFighter(
+        id: 3,
+        name: 'Sarı',
+        hatColor: const Color(0xFFA16207),
+        bodyColor: const Color(0xFFCA8A04),
+        isHuman: false,
+        x: 1,
+        y: rows - 2,
+        speed: 0.7,
+      ));
+    }
+
+    _generateMapWithDynamicBarrels();
+
+    _lastNotification = 'Playing with Fire 2 Başladı! Süre: 2:00. Varilleri patlat!';
+    _gameLoopTimer = Timer.periodic(const Duration(milliseconds: 30), (_) => _tick(0.03));
+    notifyListeners();
+  }
+
+  void _generateMapWithDynamicBarrels() {
     _grid = List.generate(rows, (r) {
       return List.generate(cols, (c) {
-        // Dış sınır duvarları
         if (r == 0 || r == rows - 1 || c == 0 || c == cols - 1) {
           return CellType.wall;
         }
-        // Sabit labirent sütunları
         if (r % 2 == 0 && c % 2 == 0) {
           return CellType.wall;
         }
-        // Oyuncu ve botların doğma köşeleri temiz kalmalı
-        if ((r <= 2 && c <= 2) || // Sol Üst (Oyuncu)
-            (r <= 2 && c >= cols - 3) || // Sağ Üst (Bot 1)
-            (r >= rows - 3 && c <= 2) || // Sol Alt (Bot 2)
-            (r >= rows - 3 && c >= cols - 3)) { // Sağ Alt (Bot 3)
-          return CellType.empty;
-        }
-        // Kırmızı kırılabilir variller (%65 şansla)
-        return Random().nextDouble() < 0.65 ? CellType.barrel : CellType.empty;
+
+        final isCorner = (r <= 2 && c <= 2) ||
+            (r >= rows - 3 && c >= cols - 3) ||
+            (r <= 2 && c >= cols - 3) ||
+            (r >= rows - 3 && c <= 2);
+
+        if (isCorner) return CellType.empty;
+
+        return _random.nextDouble() < 0.70 ? CellType.barrel : CellType.empty;
       });
     });
-
-    _gameLoopTimer = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick(0.05));
-    notifyListeners();
   }
 
-  void movePlayer(int dx, int dy) {
-    if (_health <= 0) return;
+  // --- BASILI TUTMA & HAREKET KONTROLÜ (ÇAPRAZ GEÇİŞ YOK: SADECE DİK) ---
+  void setMovementDirection(int dx, int dy) {
+    // Çapraz hareketi engelle: ya sadece yatay ya sadece dikey
+    if (dx != 0 && dy != 0) {
+      dy = 0; // Yatay öncelikli dik hareket
+    }
 
-    final targetX = _playerX + dx;
-    final targetY = _playerY + dy;
+    _holdDx = dx;
+    _holdDy = dy;
+    if (dx != 0 || dy != 0) {
+      if (_playerMoveCooldown <= 0) {
+        _executePlayerMove(dx, dy);
+        final player = humanPlayer;
+        _playerMoveCooldown = 0.16 / player.speed;
+      }
+    }
+  }
+
+  void _executePlayerMove(int dx, int dy) {
+    final player = humanPlayer;
+    if (player.status == PlayerStatus.eliminated || _isGameOver) return;
+
+    final targetX = player.x + dx;
+    final targetY = player.y + dy;
 
     if (targetX < 0 || targetX >= cols || targetY < 0 || targetY >= rows) return;
+
+    // Duvara, varile veya kapanan gri taşa çarpma
     if (_grid[targetY][targetX] != CellType.empty) return;
 
-    final hasBombAtTarget = _bombs.any((b) => b.x == targetX && b.y == targetY);
-    if (hasBombAtTarget) return;
+    // Hedef hücrede dinamit var mı?
+    final dynIndex = _dynamites.indexWhere((d) => d.x == targetX && d.y == targetY);
+    if (dynIndex != -1) {
+      final kickedDyn = _dynamites[dynIndex];
+      _kickDynamite(kickedDyn, dx, dy);
+    }
 
-    _playerX = targetX;
-    _playerY = targetY;
+    player.x = targetX;
+    player.y = targetY;
 
-    _checkPowerUpPickup();
+    _checkPowerUpPickup(player);
     notifyListeners();
   }
 
-  void placeBomb() {
-    if (_health <= 0) return;
-    if (_bombs.length >= _maxBombs) return;
+  void _kickDynamite(Dynamite dyn, int dx, int dy) {
+    dyn.slideDx = dx;
+    dyn.slideDy = dy;
+    dyn.slideCooldown = 0.0;
+  }
 
-    if (_bombs.any((b) => b.x == _playerX && b.y == _playerY)) return;
+  void placeDynamite() {
+    final player = humanPlayer;
+    if (player.status == PlayerStatus.eliminated || _isGameOver) return;
 
-    _bombs.add(Bomb(
-      x: _playerX,
-      y: _playerY,
-      range: _bombRange,
+    final activeCount = _dynamites.where((d) => d.ownerId == player.id).length;
+    if (activeCount >= player.maxDynamites) return;
+
+    if (_dynamites.any((d) => d.x == player.x && d.y == player.y)) return;
+
+    _dynamites.add(Dynamite(
+      x: player.x,
+      y: player.y,
+      range: player.dynamiteRange,
+      ownerId: player.id,
     ));
 
     notifyListeners();
   }
 
-  void _checkPowerUpPickup() {
-    final index = _powerUps.indexWhere((p) => p.x == _playerX && p.y == _playerY);
+  void _checkPowerUpPickup(ArenaFighter fighter) {
+    final index = _powerUps.indexWhere((p) => p.x == fighter.x && p.y == fighter.y);
     if (index != -1) {
       final item = _powerUps.removeAt(index);
-      _score += 150;
+      if (fighter.isHuman) {
+        _score += 500;
+      }
 
       switch (item.type) {
-        case PowerUpType.lightning:
-          _bombRange += 1;
-          _lastNotification = '⚡ Şimşek Alındı! Patlama şiddeti: $_bombRange';
+        case PowerUpType.dynamiteRange:
+          fighter.dynamiteRange += 1;
+          if (fighter.isHuman) _lastNotification = '⚡ Şimşek Alındı (+500 Puan)! Dinamit alev menzili: ${fighter.dynamiteRange}';
           break;
-        case PowerUpType.shoe:
-          _speed += 0.25;
-          _lastNotification = '👟 Ayakkabı Alındı! Hız arttı: ${_speed.toStringAsFixed(2)}x';
+        case PowerUpType.rollerSkate:
+          fighter.speed += 0.20;
+          if (fighter.isHuman) _lastNotification = '🛼 Paten Alındı (+500 Puan)! Hız arttı: ${fighter.speed.toStringAsFixed(2)}x';
           break;
-        case PowerUpType.extraBomb:
-          _maxBombs += 1;
-          _lastNotification = '💣 Bomba Alındı! Maksimum bomba: $_maxBombs';
+        case PowerUpType.extraDynamite:
+          fighter.maxDynamites += 1;
+          if (fighter.isHuman) _lastNotification = '🧨 Dinamit Paketi Alındı (+500 Puan)! Azami dinamit: ${fighter.maxDynamites}';
           break;
-        case PowerUpType.heal:
-          _health = (_health + 25).clamp(0, _maxHealth);
-          _lastNotification = '🔧 Tamir Kiti! Can iyileşti: $_health HP';
+        case PowerUpType.shield:
+          fighter.health = (fighter.health + 35).clamp(0, 100);
+          if (fighter.isHuman) _lastNotification = '🛡️ Zırh / Can Alındı (+500 Puan)! Kalan Can: ${fighter.health} HP';
           break;
       }
     }
   }
 
+  // --- OYUN DÖNGÜSÜ ---
   void _tick(double dt) {
     bool stateChanged = false;
 
-    // Patlama sürelerini güncelle
+    // 1. Geri Sayım & Ani Ölüm (Sudden Death)
+    if (_remainingSeconds > 0 && !_isGameOver) {
+      _remainingSeconds -= dt;
+      if (_remainingSeconds <= 0) {
+        _remainingSeconds = 0;
+        _isSuddenDeath = true;
+        _lastNotification = '⚠️ SÜRE DOLDU! ALAN AŞIRI HIZLI KAPANMAYA BAŞLADI!';
+        stateChanged = true;
+      }
+    } else if (_isSuddenDeath && !_isGameOver) {
+      // Aşırı hızlı kapanma: her tick'te 1 kare kapanır (30 kare/saniye)!
+      if (_suddenDeathStep < _spiralOrder.length) {
+        final pt = _spiralOrder[_suddenDeathStep++];
+        _grid[pt.y][pt.x] = CellType.suddenDeath;
+
+        _powerUps.removeWhere((p) => p.x == pt.x && p.y == pt.y);
+        _dynamites.removeWhere((d) => d.x == pt.x && d.y == pt.y);
+
+        for (final f in _fighters) {
+          if (f.status == PlayerStatus.alive && f.x == pt.x && f.y == pt.y) {
+            f.health = 0;
+            f.status = PlayerStatus.eliminated;
+            if (f.isHuman) {
+              _score = max(0, _score - 1000);
+              _lastNotification = '💀 Duvar altında ezildin! (-1000 Puan)';
+            }
+          }
+        }
+        stateChanged = true;
+        _checkMatchEndCondition();
+      }
+    }
+
+    if (_isGameOver) {
+      if (stateChanged) notifyListeners();
+      return;
+    }
+
+    // 2. Basılı Tutulan Tuşla Oyuncu Hareketi
+    if (_holdDx != 0 || _holdDy != 0) {
+      _playerMoveCooldown -= dt;
+      if (_playerMoveCooldown <= 0) {
+        _executePlayerMove(_holdDx, _holdDy);
+        final player = humanPlayer;
+        _playerMoveCooldown = 0.14 / player.speed;
+        stateChanged = true;
+      }
+    }
+
+    // 3. Kayan Dinamitlerin Hareketi (KICK)
+    for (final dyn in _dynamites) {
+      if (dyn.slideDx != 0 || dyn.slideDy != 0) {
+        dyn.slideCooldown -= dt;
+        if (dyn.slideCooldown <= 0) {
+          dyn.slideCooldown = 0.08;
+          final nx = dyn.x + dyn.slideDx;
+          final ny = dyn.y + dyn.slideDy;
+
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && _grid[ny][nx] == CellType.empty) {
+            final hasOtherDyn = _dynamites.any((d) => d != dyn && d.x == nx && d.y == ny);
+            if (!hasOtherDyn) {
+              dyn.x = nx;
+              dyn.y = ny;
+              stateChanged = true;
+            } else {
+              dyn.slideDx = 0;
+              dyn.slideDy = 0;
+            }
+          } else {
+            dyn.slideDx = 0;
+            dyn.slideDy = 0;
+          }
+        }
+      }
+    }
+
+    // 4. Patlama Alevlerini Güncelle
     for (int i = _explosions.length - 1; i >= 0; i--) {
       _explosions[i].duration -= dt;
       if (_explosions[i].duration <= 0) {
@@ -198,94 +390,250 @@ class GameplayViewModel extends ChangeNotifier {
       }
     }
 
-    // Bomba sayaçlarını güncelle
-    for (int i = _bombs.length - 1; i >= 0; i--) {
-      _bombs[i].timeLeft -= dt;
-      if (_bombs[i].timeLeft <= 0) {
-        final bomb = _bombs.removeAt(i);
-        _detonateBomb(bomb);
+    // 5. Dinamit Sayaçlarını Güncelle
+    for (int i = _dynamites.length - 1; i >= 0; i--) {
+      _dynamites[i].timeLeft -= dt;
+      if (_dynamites[i].timeLeft <= 0) {
+        final d = _dynamites.removeAt(i);
+        _detonateDynamite(d);
         stateChanged = true;
       }
     }
 
-    // Bot Yapay Zekasını Güncelle
-    _updateBots(dt);
+    // 6. Akıllı ve Optimize Bot AI
+    _updateBotAI(dt);
+
+    // Canlı oyuncu durum kontrolü
+    _checkMatchEndCondition();
 
     if (stateChanged) {
       notifyListeners();
     }
   }
 
-  void _updateBots(double dt) {
-    final random = Random();
+  void _checkMatchEndCondition() {
+    if (_isGameOver) return;
 
-    for (final bot in _bots) {
-      if (bot.health <= 0) continue;
+    final aliveFighters = _fighters.where((f) => f.status == PlayerStatus.alive).toList();
+
+    // Tüm oyuncular öldüyse veya sadece 1 kişi kaldıysa
+    if (aliveFighters.isEmpty) {
+      _triggerGameOverAllWallsClose(
+        title: 'OYUN BİTTİ',
+        message: 'Tüm savaşçılar elendi! Kazanan yok.',
+      );
+    } else if (aliveFighters.length == 1) {
+      final winner = aliveFighters.first;
+      winner.wins += 1;
+      _triggerGameOverAllWallsClose(
+        title: winner.isHuman ? '🏆 ZAFER!' : 'OYUN BİTTİ',
+        message: winner.isHuman
+            ? 'Tebrikler! Arenada hayatta kalan son kişi oldun!'
+            : '${winner.name} son hayatta kalan şampiyon oldu!',
+      );
+    }
+  }
+
+  // Tüm oyuncular ölünce veya oyun bitince haritanın tamamını aynı anda gri duvarlarla kapatır
+  void _triggerGameOverAllWallsClose({required String title, required String message}) {
+    _isGameOver = true;
+    _gameOverTitle = title;
+    _gameOverMessage = message;
+
+    // Tüm iç ızgarayı aynı anda gri duvara dönüştür
+    for (int r = 1; r < rows - 1; r++) {
+      for (int c = 1; c < cols - 1; c++) {
+        _grid[r][c] = CellType.suddenDeath;
+      }
+    }
+
+    _dynamites.clear();
+    _explosions.clear();
+    _powerUps.clear();
+    _lastNotification = '🏁 $title - $message';
+    notifyListeners();
+  }
+
+  // --- BOT YAPAY ZEKASI ---
+  void _updateBotAI(double dt) {
+    for (final bot in _fighters) {
+      if (bot.isHuman || bot.status == PlayerStatus.eliminated) continue;
 
       bot.moveCooldown -= dt;
-      if (bot.moveCooldown <= 0) {
-        bot.moveCooldown = 0.6 + random.nextDouble() * 0.4; // 0.6-1.0 sn arayla hamle
+      if (bot.moveCooldown > 0) continue;
 
-        const dirs = [
-          [0, -1], [0, 1], [-1, 0], [1, 0]
-        ];
-        dirs.shuffle();
+      bot.moveCooldown = (0.24 / bot.speed) + (_random.nextDouble() * 0.06);
 
-        for (final dir in dirs) {
-          final nx = bot.x + dir[0];
-          final ny = bot.y + dir[1];
-
-          if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1) {
-            // Önünde varil varsa bomba bırakma şansı
-            if (_grid[ny][nx] == CellType.barrel && random.nextDouble() < 0.35) {
-              if (!_bombs.any((b) => b.x == bot.x && b.y == bot.y)) {
-                _bombs.add(Bomb(x: bot.x, y: bot.y, range: 1));
-                break;
-              }
-            }
-
-            // Boş hücreye yürü
-            if (_grid[ny][nx] == CellType.empty && !_bombs.any((b) => b.x == nx && b.y == ny)) {
-              bot.x = nx;
-              bot.y = ny;
-              break;
-            }
-          }
+      // 1. Tehlikeden Kaçış
+      final inDanger = _isTileInDanger(bot.x, bot.y);
+      if (inDanger) {
+        final escapeDir = _findSafeNeighbor(bot.x, bot.y);
+        if (escapeDir != null) {
+          _tryMoveFighter(bot, escapeDir[0], escapeDir[1]);
+          _checkPowerUpPickup(bot);
+          continue;
         }
+      }
+
+      // 2. Dinamit Tuzağı Kurma (Diğer oyunculara ve varillere)
+      final activeBotDyns = _dynamites.where((d) => d.ownerId == bot.id).length;
+      final canPlace = activeBotDyns < bot.maxDynamites && !inDanger;
+
+      final nearPlayer = _isAdjacentToHuman(bot.x, bot.y);
+      final nearBarrel = _hasAdjacentBarrel(bot.x, bot.y);
+
+      if (canPlace && (nearPlayer || (nearBarrel && _random.nextDouble() < 0.45))) {
+        if (!_dynamites.any((d) => d.x == bot.x && d.y == bot.y)) {
+          _dynamites.add(Dynamite(
+            x: bot.x,
+            y: bot.y,
+            range: bot.dynamiteRange,
+            ownerId: bot.id,
+          ));
+          bot.moveCooldown = 0.05;
+          continue;
+        }
+      }
+
+      // 3. Güvenli Yönlere Hareket
+      final validMoves = _getValidMoves(bot.x, bot.y);
+      if (validMoves.isNotEmpty) {
+        final safeMoves = validMoves.where((m) => !_isTileInDanger(bot.x + m[0], bot.y + m[1])).toList();
+        final selectedMoves = safeMoves.isNotEmpty ? safeMoves : validMoves;
+
+        final chosenMove = selectedMoves[_random.nextInt(selectedMoves.length)];
+        _tryMoveFighter(bot, chosenMove[0], chosenMove[1]);
+        _checkPowerUpPickup(bot);
       }
     }
   }
 
-  void _detonateBomb(Bomb bomb) {
-    _addExplosion(bomb.x, bomb.y);
+  bool _isAdjacentToHuman(int x, int y) {
+    final human = humanPlayer;
+    if (human.status == PlayerStatus.eliminated) return false;
+    return (human.x - x).abs() + (human.y - y).abs() <= 2;
+  }
+
+  bool _isTileInDanger(int x, int y) {
+    if (_explosions.any((e) => e.x == x && e.y == y)) return true;
+
+    for (final d in _dynamites) {
+      if (d.x == x && (d.y - y).abs() <= d.range) {
+        if (_hasClearPath(d.x, min(d.y, y), max(d.y, y), isVertical: true)) return true;
+      }
+      if (d.y == y && (d.x - x).abs() <= d.range) {
+        if (_hasClearPath(d.y, min(d.x, x), max(d.x, x), isVertical: false)) return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasClearPath(int fixed, int start, int end, {required bool isVertical}) {
+    for (int p = start + 1; p < end; p++) {
+      final cell = isVertical ? _grid[p][fixed] : _grid[fixed][p];
+      if (cell != CellType.empty) return false;
+    }
+    return true;
+  }
+
+  List<int>? _findSafeNeighbor(int x, int y) {
+    const dirs = [
+      [0, -1], [0, 1], [-1, 0], [1, 0]
+    ];
+    for (final d in dirs) {
+      final nx = x + d[0];
+      final ny = y + d[1];
+      if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && _grid[ny][nx] == CellType.empty) {
+        if (!_dynamites.any((dyn) => dyn.x == nx && dyn.y == ny) && !_isTileInDanger(nx, ny)) {
+          return d;
+        }
+      }
+    }
+    return null;
+  }
+
+  bool _hasAdjacentBarrel(int x, int y) {
+    const dirs = [
+      [0, -1], [0, 1], [-1, 0], [1, 0]
+    ];
+    for (final d in dirs) {
+      final nx = x + d[0];
+      final ny = y + d[1];
+      if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && _grid[ny][nx] == CellType.barrel) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<List<int>> _getValidMoves(int x, int y) {
+    const dirs = [
+      [0, -1], [0, 1], [-1, 0], [1, 0]
+    ];
+    final moves = <List<int>>[];
+    for (final d in dirs) {
+      final nx = x + d[0];
+      final ny = y + d[1];
+      if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && _grid[ny][nx] == CellType.empty) {
+        if (!_dynamites.any((dyn) => dyn.x == nx && dyn.y == ny)) {
+          moves.add(d);
+        }
+      }
+    }
+    return moves;
+  }
+
+  bool _tryMoveFighter(ArenaFighter fighter, int dx, int dy) {
+    final tx = fighter.x + dx;
+    final ty = fighter.y + dy;
+
+    if (tx < 0 || tx >= cols || ty < 0 || ty >= rows) return false;
+    if (_grid[ty][tx] != CellType.empty) return false;
+
+    final hasDynamite = _dynamites.any((d) => d.x == tx && d.y == ty);
+    if (hasDynamite) return false;
+
+    fighter.x = tx;
+    fighter.y = ty;
+    return true;
+  }
+
+  // --- DİNAMİT PATLAMASI & PUANLAMA KURALLARI ---
+  void _detonateDynamite(Dynamite d) {
+    _addExplosion(d.x, d.y, isCenter: true);
 
     const directions = [
       [0, -1], [0, 1], [-1, 0], [1, 0]
     ];
 
     for (final dir in directions) {
-      for (int dist = 1; dist <= bomb.range; dist++) {
-        final tx = bomb.x + (dir[0] * dist);
-        final ty = bomb.y + (dir[1] * dist);
+      for (int dist = 1; dist <= d.range; dist++) {
+        final tx = d.x + (dir[0] * dist);
+        final ty = d.y + (dir[1] * dist);
 
         if (tx < 0 || tx >= cols || ty < 0 || ty >= rows) break;
-        if (_grid[ty][tx] == CellType.wall) break;
+        if (_grid[ty][tx] == CellType.wall || _grid[ty][tx] == CellType.suddenDeath) break;
 
+        // Varil Patlatma (100 Puan)
         if (_grid[ty][tx] == CellType.barrel) {
           _grid[ty][tx] = CellType.empty;
           _addExplosion(tx, ty);
-          _score += 100;
+
+          if (d.ownerId == humanPlayer.id) {
+            _score += 100;
+          }
 
           _maybeDropPowerUp(tx, ty);
           break;
         }
 
-        final otherBomb = _bombs.cast<Bomb?>().firstWhere(
-          (b) => b?.x == tx && b?.y == ty,
-          orElse: () => null,
-        );
-        if (otherBomb != null) {
-          otherBomb.timeLeft = 0.05;
+        // Zincirleme Patlama
+        final chained = _dynamites.cast<Dynamite?>().firstWhere(
+              (dyn) => dyn?.x == tx && dyn?.y == ty,
+              orElse: () => null,
+            );
+        if (chained != null) {
+          chained.timeLeft = 0.04;
         }
 
         _addExplosion(tx, ty);
@@ -293,39 +641,41 @@ class GameplayViewModel extends ChangeNotifier {
     }
   }
 
-  void _addExplosion(int x, int y) {
-    _explosions.add(ExplosionTile(x: x, y: y));
+  void _addExplosion(int x, int y, {bool isCenter = false}) {
+    _explosions.add(ExplosionTile(x: x, y: y, isCenter: isCenter));
 
-    // Oyuncu hasarı
-    if (_playerX == x && _playerY == y) {
-      _health = max(0, _health - 25);
-      _lastNotification = '⚠️ Hasar aldın! Kalan Can: $_health HP';
-      if (_health <= 0) {
-        _lastNotification = '💀 Kaybettin! Yeniden başlatabilirsin.';
-      }
-    }
+    // Hasar & Puanlama Mantığı
+    for (final fighter in _fighters) {
+      if (fighter.status == PlayerStatus.alive && fighter.x == x && fighter.y == y) {
+        fighter.health = max(0, fighter.health - 50);
 
-    // Bot hasarı
-    for (final bot in _bots) {
-      if (bot.x == x && bot.y == y && bot.health > 0) {
-        bot.health -= 50;
-        if (bot.health <= 0) {
-          _score += 300;
-          _lastNotification = '🎯 ${bot.name} elendi! +300 Puan!';
+        if (fighter.isHuman) {
+          if (fighter.health <= 0) {
+            fighter.status = PlayerStatus.eliminated;
+            _score = max(0, _score - 1000);
+            _lastNotification = '💀 Elendin! (-1000 Puan)';
+          } else {
+            _score = max(0, _score - 200);
+            _lastNotification = '⚠️ Alev hasarı aldın! Kalan: ${fighter.health} HP';
+          }
+        } else {
+          _score += 1000;
+          if (fighter.health <= 0) {
+            fighter.status = PlayerStatus.eliminated;
+            _lastNotification = '🎯 ${fighter.name} elendi! (+1000 Puan)';
+          } else {
+            _lastNotification = '💥 ${fighter.name} vuruldu! (+1000 Puan)';
+          }
         }
       }
     }
-
-    // Zafer kontrolü: Oyuncu hayatta ve tüm botlar elendiyse
-    if (_health > 0 && _bots.isNotEmpty && _bots.every((b) => b.health <= 0)) {
-      _lastNotification = '🏆 TEBRİKLER! Tüm rakipleri yendin, ARENA ŞAMPİYONUSUN!';
-    }
   }
 
+  // Kullanıcı İsteği: Malzeme çıkma olasılığı tam olarak %39 yapıldı
   void _maybeDropPowerUp(int x, int y) {
-    if (Random().nextDouble() < 0.55) {
-      final types = PowerUpType.values;
-      final selected = types[Random().nextInt(types.length)];
+    if (_random.nextDouble() < 0.39) {
+      const types = PowerUpType.values;
+      final selected = types[_random.nextInt(types.length)];
       _powerUps.add(PowerUpItem(x: x, y: y, type: selected));
     }
   }

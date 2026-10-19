@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/character/animated_character_painter.dart';
+import '../core/character/character_state.dart';
 import '../core/constants.dart';
 import '../models/user_profile.dart';
 import '../viewmodels/gameplay_viewmodel.dart';
@@ -312,9 +314,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
                                     )
                                   ],
                                 ),
-                                child: const Center(
-                                  child: Text('🧑‍🚒', style: TextStyle(fontSize: 82)),
-                                ),
+                              child: const AnimatedFirefighterWidget(
+                                size: 120,
+                                state: CharacterAnimState.idle,
+                              ),
                               ),
                             ),
                             const SizedBox(height: 12),

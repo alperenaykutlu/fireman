@@ -1,5 +1,11 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
-import '../core/constants.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../core/character/animated_character_painter.dart';
+import '../core/character/character_state.dart';
+import '../core/particles/game_particles.dart';
+import '../core/responsive/responsive_layout.dart';
 import '../models/user_profile.dart';
 import 'main_menu_screen.dart';
 
@@ -10,230 +16,471 @@ class OnboardingScreen extends StatefulWidget {
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerProviderStateMixin {
-  final List<String> _storyLines = [
-    "Alevler şehri sardı...\nLabirentin derinliklerinde yangın büyüyor.",
-    "Her itfaiyeci başta yalnızca tek bir bomba taşıyabilir.",
-    "Kırmızı varilleri patlatarak gizlenmiş güçleri ortaya çıkar!",
-    "⚡ Şimşek şiddeti artırır, 👟 Ayakkabı hız kazandırır,\n💣 Bomba kapasiteni genişletir, 🔧 Tamir canını yeniler.",
-    "Arenanın kontrolünü ele geçir!\nAteşle oynamaya hazır mısın?"
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+  String _selectedHeroName = "Kaptan Ateş";
+  CharacterAnimState _heroAnimState = CharacterAnimState.idle;
+  final TextEditingController _customNameCtrl = TextEditingController();
+  bool _isCustomNameMode = false;
+
+  final List<String> _presetNames = [
+    "Kaptan Ateş",
+    "Alev Avcısı",
+    "Kurtarma 1",
+    "Demir Kask",
   ];
 
-  int _currentLineIndex = 0;
-  bool _showUsernameInput = false;
-  late AnimationController _animController;
-  late Animation<double> _fadeAnimation;
-  final TextEditingController _usernameController = TextEditingController();
-  UserProfile? _userProfile;
-
   @override
-  void initState() {
-    super.initState();
-    _loadProfile();
-
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeInOut,
-    );
-
-    _startSequence();
+  void dispose() {
+    _pageController.dispose();
+    _customNameCtrl.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadProfile() async {
-    _userProfile = await UserProfile.load();
-    if (_userProfile!.username.isNotEmpty) {
-      _usernameController.text = _userProfile!.username;
-    }
+  void _onHeroTapped() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _heroAnimState = _heroAnimState == CharacterAnimState.action
+          ? CharacterAnimState.celebrate
+          : CharacterAnimState.action;
+    });
 
-    final hasCompleted = await UserProfile.hasCompletedOnboarding();
-    if (hasCompleted && mounted && _userProfile!.username.isNotEmpty) {
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) {
+        setState(() => _heroAnimState = CharacterAnimState.idle);
+      }
+    });
+  }
+
+  Future<void> _completeOnboarding() async {
+    HapticFeedback.heavyImpact();
+    final username = _isCustomNameMode && _customNameCtrl.text.trim().isNotEmpty
+        ? _customNameCtrl.text.trim()
+        : _selectedHeroName;
+
+    final profile = await UserProfile.load();
+    profile.username = username;
+    await profile.save();
+    await UserProfile.setCompletedOnboarding(true);
+
+    if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => MainMenuScreen(profile: _userProfile!),
+          builder: (context) => MainMenuScreen(profile: profile),
         ),
       );
     }
   }
 
-  Future<void> _startSequence() async {
-    // İlk metni karartmadan aç
-    await _animController.forward();
-    await Future.delayed(const Duration(milliseconds: 1800));
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF090D14),
+      body: Stack(
+        children: [
+          // 1. KATMAN: Parallax Gece Gökyüzü ve Şehir Silueti
+          Positioned.fill(
+            child: CustomPaint(
+              painter: CinematicCitySkylinePainter(pageOffset: _currentPage.toDouble()),
+            ),
+          ),
 
-    // Sırayla metinleri karartarak değiştir
-    while (mounted && _currentLineIndex < _storyLines.length - 1) {
-      // 1. Karararak git (Fade Out)
-      await _animController.reverse();
-      await Future.delayed(const Duration(milliseconds: 300));
+          // 2. KATMAN: Yükselen Gerçek Zamanlı Kıvılcım Parçacıkları
+          const Positioned.fill(
+            child: AmbientEmberOverlay(maxParticles: 35),
+          ),
 
-      if (!mounted) return;
-      setState(() {
-        _currentLineIndex++;
-      });
+          // 3. KATMAN: Responsive İçerik ve PageView
+          ResponsiveLayout(
+            child: Column(
+              children: [
+                // Üst Bar: Başlık & Hızlı Atla Butonu
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEF4444).withAlpha(40),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFFEF4444)),
+                            ),
+                            child: const Text('🚒', style: TextStyle(fontSize: 16)),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'FIREMAN HERO',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_currentPage < 2)
+                        TextButton(
+                          onPressed: () {
+                            _pageController.animateToPage(
+                              2,
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeInOut,
+                            );
+                          },
+                          child: const Text(
+                            'ATLA',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
 
-      // 2. Yeni metin belirsin (Fade In)
-      await _animController.forward();
-      await Future.delayed(const Duration(milliseconds: 1800));
-    }
+                // Ortadaki Dinamik Etkileşimli Kahraman (Karakter)
+                Expanded(
+                  flex: 5,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: _onHeroTapped,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedFirefighterWidget(
+                            size: 150,
+                            state: _heroAnimState,
+                            showHose: true,
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withAlpha(140),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.amberAccent.withAlpha(80)),
+                            ),
+                            child: const Text(
+                              '👆 Dokun ve Gücü Gör!',
+                              style: TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
 
-    // Metinler bitti, kullanıcı adı belirleme alanını aç
-    if (mounted) {
-      await _animController.reverse();
-      setState(() {
-        _showUsernameInput = true;
-      });
-      await _animController.forward();
-    }
-  }
+                // Alt Panel: Açıklayıcı Sayfalar (PageView)
+                Expanded(
+                  flex: 5,
+                  child: PageView(
+                    controller: _pageController,
+                    onPageChanged: (page) => setState(() => _currentPage = page),
+                    children: [
+                      _buildCinematicIntroPage(),
+                      _buildMechanicsPage(),
+                      _buildQuickHeroSelectPage(),
+                    ],
+                  ),
+                ),
 
-  void _proceedToMainMenu() async {
-    final name = _usernameController.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen bir itfaiyeci adı belirleyin!')),
-      );
-      return;
-    }
-
-    if (_userProfile != null) {
-      _userProfile!.username = name;
-      await _userProfile!.save();
-      await UserProfile.setOnboardingCompleted();
-    }
-
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (context, anim1, anim2) => MainMenuScreen(profile: _userProfile!),
-        transitionsBuilder: (context, animation, secAnim, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
+                // Sayfa Göstergeleri ve İleri / Başla Butonu
+                _buildBottomControls(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    _usernameController.dispose();
-    super.dispose();
+  /// 1. SİNEMATİK GİRİŞ SAYFASI
+  Widget _buildCinematicIntroPage() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'ALEVLER ŞEHRİ SARDI!',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFFFF5722),
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
+          ),
+        ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.2, end: 0),
+        const SizedBox(height: 12),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            'Labirent sokaklarda yangın büyüyor. Şehrin kaderi cesur bir itfaiyecinin ellerinde!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+        ).animate().fadeIn(delay: 150.ms, duration: 400.ms),
+      ],
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
+  /// 2. MEKANİKLER VE STRATEJİ SAYFASI
+  Widget _buildMechanicsPage() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'ARENA GÜÇLERİNİ TOPLA',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFFFFC107),
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+          ),
+        ).animate().fadeIn(),
+        const SizedBox(height: 14),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildPowerCard('⚡', 'Şimşek', 'Alev menzilini genişlet', Colors.amber),
+            const SizedBox(width: 8),
+            _buildPowerCard('🛼', 'Paten', 'Hız kazan, kaç', Colors.cyan),
+            const SizedBox(width: 8),
+            _buildPowerCard('💣', 'Dinamit', 'Kapasiteyi katla', Colors.redAccent),
+          ],
+        ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1, end: 0),
+      ],
+    );
+  }
+
+  Widget _buildPowerCard(String icon, String title, String desc, Color color) {
+    return Container(
+      width: 95,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161F2E),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withAlpha(120), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withAlpha(30),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Column(
         children: [
-          // Arka plan atmosfer ışığı
-          Center(
-            child: Container(
-              width: 320,
-              height: 320,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppConstants.fireRed.withValues(alpha: 0.18),
-                    Colors.transparent,
-                  ],
+          Text(icon, style: const TextStyle(fontSize: 26)),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            desc,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 9,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 3. KLAVYESİZ HIZLI KAHRAMAN PROFİLİ SEÇİM SAYFASI
+  Widget _buildQuickHeroSelectPage() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'KAHRAMANINI SEÇ & BAŞLA',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 21,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Klavye gerekmeden tek dokunuşla hemen hazır ol:',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(height: 14),
+
+        // Hızlı İsim Hapları (Pills)
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: _presetNames.map((name) {
+            final isSelected = !_isCustomNameMode && _selectedHeroName == name;
+            return ChoiceChip(
+              label: Text(name),
+              selected: isSelected,
+              onSelected: (val) {
+                if (val) {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _isCustomNameMode = false;
+                    _selectedHeroName = name;
+                  });
+                }
+              },
+              selectedColor: const Color(0xFFEF4444),
+              backgroundColor: const Color(0xFF1A2232),
+              labelStyle: TextStyle(
+                color: isSelected ? Colors.white : Colors.white70,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+              side: BorderSide(
+                color: isSelected ? Colors.amberAccent : const Color(0xFF2E3A4E),
+              ),
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 8),
+
+        // İsteğe Bağlı Kendi İsmini Gir Butonu
+        TextButton.icon(
+          onPressed: () {
+            setState(() => _isCustomNameMode = !_isCustomNameMode);
+          },
+          icon: Icon(
+            _isCustomNameMode ? Icons.check : Icons.edit,
+            size: 14,
+            color: Colors.amberAccent,
+          ),
+          label: Text(
+            _isCustomNameMode ? 'Hazır İsimlere Dön' : 'Özel İsim Yaz (İsteğe Bağlı)',
+            style: const TextStyle(color: Colors.amberAccent, fontSize: 11),
+          ),
+        ),
+
+        if (_isCustomNameMode)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 4),
+            child: SizedBox(
+              height: 40,
+              child: TextField(
+                controller: _customNameCtrl,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Kahraman Adı',
+                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                  filled: true,
+                  fillColor: const Color(0xFF1E293B),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.amberAccent),
+                  ),
                 ),
               ),
             ),
           ),
+      ],
+    );
+  }
 
-          // İçerik
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: !_showUsernameInput
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('🔥', style: TextStyle(fontSize: 48)),
-                          const SizedBox(height: 24),
-                          Text(
-                            _storyLines[_currentLineIndex],
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              height: 1.6,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 36),
-                          // Geç Butonu
-                          TextButton(
-                            onPressed: () {
-                              setState(() {
-                                _showUsernameInput = true;
-                              });
-                              _animController.forward(from: 0.0);
-                            },
-                            child: const Text('Geç >>', style: TextStyle(color: Colors.white38)),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('🧑‍🚒', style: TextStyle(fontSize: 56)),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'OYUNCU ADINI BELİRLE',
-                            style: TextStyle(
-                              color: AppConstants.fireOrange,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Arenada seni bu isimle tanıyacaklar.',
-                            style: TextStyle(color: Colors.white54, fontSize: 13),
-                          ),
-                          const SizedBox(height: 24),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: AppConstants.bgCard,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppConstants.borderCard),
-                            ),
-                            child: TextField(
-                              controller: _usernameController,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                              decoration: const InputDecoration(
-                                hintText: 'Örn: Kaptan_Alev',
-                                hintStyle: TextStyle(color: Colors.white30),
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.all(16),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppConstants.fireOrange,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: _proceedToMainMenu,
-                            child: const Text('ARENAYA GİRİŞ YAP', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
+  /// ALT KONTROL PANELİ
+  Widget _buildBottomControls() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Sayfa Göstergeleri (Dots)
+          Row(
+            children: List.generate(3, (index) {
+              final isActive = _currentPage == index;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: isActive ? 22 : 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: isActive ? const Color(0xFFFF5722) : Colors.white24,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            }),
+          ),
+
+          // Aksiyon Butonu (İLERİ veya OYUNA BAŞLA)
+          GestureDetector(
+            onTap: () {
+              if (_currentPage < 2) {
+                _pageController.nextPage(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOut,
+                );
+              } else {
+                _completeOnboarding();
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.amberAccent, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEF4444).withAlpha(120),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    _currentPage == 2 ? 'OYUNA BAŞLA' : 'İLERİ',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    _currentPage == 2 ? Icons.play_arrow : Icons.arrow_forward_ios,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ],
               ),
             ),
           ),
@@ -241,4 +488,97 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
       ),
     );
   }
+}
+
+/// Katmanlı Şehir ve Gökyüzü Ressamı (Parallax Skyline)
+class CinematicCitySkylinePainter extends CustomPainter {
+  final double pageOffset;
+
+  CinematicCitySkylinePainter({required this.pageOffset});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Gökyüzü Gradyanı
+    final skyPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF030712),
+          Color(0xFF0F172A),
+          Color(0xFF1E1B4B),
+          Color(0xFF311018), // Yangın kızıllığı
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), skyPaint);
+
+    // Ay ve Kızıl Hale
+    final moonCenter = Offset(size.width * 0.82 - (pageOffset * 20), size.height * 0.16);
+    final glowPaint = Paint()
+      ..color = const Color(0xFFFDE047).withAlpha(40)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
+    canvas.drawCircle(moonCenter, 32, glowPaint);
+    canvas.drawCircle(moonCenter, 18, Paint()..color = const Color(0xFFFEF08A));
+
+    // 2. Uzak Şehir Silueti (Parallax Hızı: 0.3)
+    final distantBuildingPaint = Paint()..color = const Color(0xFF0D1322);
+    _drawBuildings(
+      canvas,
+      size,
+      baseY: size.height * 0.65,
+      step: 38,
+      heightSeed: 85,
+      offset: pageOffset * 25,
+      paint: distantBuildingPaint,
+    );
+
+    // 3. Yakın Şehir Silueti (Parallax Hızı: 0.6)
+    final nearBuildingPaint = Paint()..color = const Color(0xFF090E18);
+    _drawBuildings(
+      canvas,
+      size,
+      baseY: size.height * 0.76,
+      step: 48,
+      heightSeed: 130,
+      offset: pageOffset * 50,
+      paint: nearBuildingPaint,
+    );
+
+    // Zemin ve Islak Sokak Işıltısı
+    final groundPaint = Paint()..color = const Color(0xFF05070B);
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.height * 0.88, size.width, size.height * 0.12),
+      groundPaint,
+    );
+
+    final lineGlow = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.transparent,
+          const Color(0xFFFF5722).withAlpha(120),
+          const Color(0xFFFFC107).withAlpha(120),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromLTWH(0, size.height * 0.88, size.width, 3));
+    canvas.drawRect(Rect.fromLTWH(0, size.height * 0.88, size.width, 2.5), lineGlow);
+  }
+
+  void _drawBuildings(
+    Canvas canvas,
+    Size size, {
+    required double baseY,
+    required double step,
+    required double heightSeed,
+    required double offset,
+    required Paint paint,
+  }) {
+    for (double x = -offset % step - step; x < size.width + step; x += step) {
+      final h = (sin(x * 0.12).abs() * heightSeed) + 40;
+      canvas.drawRect(Rect.fromLTWH(x, baseY - h, step * 0.92, h + 150), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CinematicCitySkylinePainter oldDelegate) =>
+      oldDelegate.pageOffset != pageOffset;
 }
