@@ -106,6 +106,27 @@ class GameplayViewModel extends ChangeNotifier {
     startNewGame();
   }
 
+  /// Call this when the match transport reports that a remote participant left.
+  void markPlayerDisconnected(int fighterId) {
+    ArenaFighter? fighter;
+    for (final candidate in _fighters) {
+      if (candidate.id == fighterId && !candidate.isHuman) {
+        fighter = candidate;
+        break;
+      }
+    }
+    if (fighter == null || fighter.status == PlayerStatus.eliminated) return;
+    fighter.isDisconnected = true;
+    fighter.status = PlayerStatus.eliminated;
+    fighter.health = 0;
+    for (final offset in const [Point(0, 0), Point(1, 0), Point(-1, 0), Point(0, 1), Point(0, -1)]) {
+      _explosions.add(ExplosionTile(x: fighter.x + offset.x, y: fighter.y + offset.y, duration: .65, isCenter: offset.x == 0 && offset.y == 0));
+    }
+    _lastNotification = '⚡ ${fighter.name} bağlantısı koptu ve oyundan düştü';
+    notifyListeners();
+    _checkMatchEndCondition();
+  }
+
   void startNewGame() {
     _gameLoopTimer?.cancel();
     _dynamites.clear();
@@ -176,7 +197,7 @@ class GameplayViewModel extends ChangeNotifier {
 
     _generateMapWithDynamicBarrels();
 
-    _lastNotification = 'Playing with Fire 2 Başladı! Süre: 2:00. Varilleri patlat!';
+    _lastNotification = null;
     _gameLoopTimer = Timer.periodic(const Duration(milliseconds: 30), (_) => _tick(0.03));
     notifyListeners();
   }

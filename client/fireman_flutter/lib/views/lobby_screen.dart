@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../viewmodels/match_viewmodel.dart';
 import 'gameplay_screen.dart';
+import '../widgets/fireman_card.dart';
 
 class LobbyScreen extends StatelessWidget {
   const LobbyScreen({super.key});
@@ -21,13 +22,9 @@ class LobbyScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Eşleşme Kartı
-            Container(
+            FiremanCard(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppConstants.bgCard,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppConstants.borderCard),
-              ),
+              borderRadius: 16,
               child: Column(
                 children: [
                   const Text('İtfaiye Ekibi Eşleşmesi', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -108,13 +105,9 @@ class LobbyScreen extends StatelessWidget {
   }
 
   Widget _buildPlayerRow(String name, bool isReady) {
-    return Container(
+    return FiremanCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppConstants.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppConstants.borderCard),
-      ),
+      borderRadius: 12,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

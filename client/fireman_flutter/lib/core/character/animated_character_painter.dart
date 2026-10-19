@@ -13,14 +13,20 @@ class FirefighterCharacterPainter extends CustomPainter {
   final Color helmetColor;
   final bool showShadow;
   final bool showHose;
+  final bool isFemale;
+  final Color accessoryColor;
+  final Color skinColor;
+  final int hatStyle;
+  final int accessoryStyle;
 
   // Performans: Statik önbelleklenmiş Paint nesneleri
   static final Paint _shadowPaint = Paint()..color = const Color(0x55000000);
-  static final Paint _skinPaint = Paint()..color = const Color(0xFFFFD1A4);
   static final Paint _glovePaint = Paint()..color = const Color(0xFF1E293B);
   static final Paint _bootPaint = Paint()..color = const Color(0xFF0F172A);
-  static final Paint _stripePaint = Paint()..color = const Color(0xFFEAB308); // Fosforlu sarı
-  static final Paint _silverStripePaint = Paint()..color = const Color(0xFFE2E8F0); // Reflektör gümüş
+  static final Paint _stripePaint = Paint()
+    ..color = const Color(0xFFEAB308); // Fosforlu sarı
+  static final Paint _silverStripePaint = Paint()
+    ..color = const Color(0xFFE2E8F0); // Reflektör gümüş
   static final Paint _badgePaint = Paint()..color = const Color(0xFFFFD700);
   static final Paint _eyeWhite = Paint()..color = Colors.white;
   static final Paint _eyePupil = Paint()..color = const Color(0xFF0F172A);
@@ -46,6 +52,11 @@ class FirefighterCharacterPainter extends CustomPainter {
     this.helmetColor = const Color(0xFFFBBF24), // İtfaiye altın/sarısı
     this.showShadow = true,
     this.showHose = true,
+    this.isFemale = false,
+    this.accessoryColor = const Color(0xFF38BDF8),
+    this.skinColor = const Color(0xFFFFD1A4),
+    this.hatStyle = 0,
+    this.accessoryStyle = 0,
   });
 
   @override
@@ -153,14 +164,49 @@ class FirefighterCharacterPainter extends CustomPainter {
     // 3. Gövde (İtfaiyeci Montu + Fosforlu Reflektör Bantlar)
     final torsoCenterY = 0.0 - breathOffset;
     final torsoRect = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: Offset(0, torsoCenterY),
-        width: 32,
-        height: 36,
-      ),
+      Rect.fromCenter(center: Offset(0, torsoCenterY), width: 32, height: 36),
       const Radius.circular(8),
     );
     canvas.drawRRect(torsoRect, suitPaint);
+
+    if (accessoryStyle == 1) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(8, torsoCenterY - 11, 12, 9),
+          const Radius.circular(2),
+        ),
+        Paint()..color = const Color(0xFF172033),
+      );
+      canvas.drawLine(
+        Offset(10, torsoCenterY - 8),
+        Offset(18, torsoCenterY - 8),
+        Paint()
+          ..color = accessoryColor
+          ..strokeWidth = 2,
+      );
+    } else if (accessoryStyle == 2) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(-23, torsoCenterY - 13, 8, 28),
+          const Radius.circular(4),
+        ),
+        Paint()..color = accessoryColor,
+      );
+      canvas.drawLine(
+        Offset(-19, torsoCenterY - 14),
+        Offset(-19, torsoCenterY + 15),
+        Paint()
+          ..color = Colors.white70
+          ..strokeWidth = 1.5,
+      );
+    } else {
+      final coil = Paint()
+        ..color = accessoryColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawOval(Rect.fromLTWH(-25, torsoCenterY - 2, 10, 16), coil);
+      canvas.drawOval(Rect.fromLTWH(-23, torsoCenterY + 1, 6, 10), coil);
+    }
 
     // Fosforlu Emniyet Şeritleri (Yatay Reflektörler)
     final stripeRect1 = Rect.fromCenter(
@@ -185,13 +231,31 @@ class FirefighterCharacterPainter extends CustomPainter {
     );
     canvas.drawRect(beltRect, _bootPaint);
     canvas.drawRect(
-      Rect.fromCenter(center: Offset(0, torsoCenterY + 14), width: 8, height: 7),
+      Rect.fromCenter(
+        center: Offset(0, torsoCenterY + 14),
+        width: 8,
+        height: 7,
+      ),
       _badgePaint,
     );
 
     // 4. Kollar ve Eldivenler (Omuz Pivotu)
-    _drawArm(canvas, -18, torsoCenterY - 10, armAngleLeft, suitPaint, isLeft: true);
-    _drawArm(canvas, 18, torsoCenterY - 10, armAngleRight, suitPaint, isLeft: false);
+    _drawArm(
+      canvas,
+      -18,
+      torsoCenterY - 10,
+      armAngleLeft,
+      suitPaint,
+      isLeft: true,
+    );
+    _drawArm(
+      canvas,
+      18,
+      torsoCenterY - 10,
+      armAngleRight,
+      suitPaint,
+      isLeft: false,
+    );
 
     // 5. Su Hortumu ve Püskürtme (Aksiyon durumunda)
     if (showHose && state == CharacterAnimState.action) {
@@ -202,7 +266,11 @@ class FirefighterCharacterPainter extends CustomPainter {
 
       // Su nozulu
       canvas.drawRect(
-        Rect.fromCenter(center: Offset(24, torsoCenterY - 6), width: 8, height: 6),
+        Rect.fromCenter(
+          center: Offset(24, torsoCenterY - 6),
+          width: 8,
+          height: 6,
+        ),
         _silverStripePaint,
       );
 
@@ -215,8 +283,16 @@ class FirefighterCharacterPainter extends CustomPainter {
       canvas.drawPath(waterPath, _waterSprayPaint);
 
       // Su tanecikleri
-      canvas.drawCircle(Offset(52 + sin(animTime * 20) * 4, torsoCenterY - 10), 3, _waterSprayPaint);
-      canvas.drawCircle(Offset(46 + cos(animTime * 22) * 5, torsoCenterY - 2), 2.5, _waterSprayPaint);
+      canvas.drawCircle(
+        Offset(52 + sin(animTime * 20) * 4, torsoCenterY - 10),
+        3,
+        _waterSprayPaint,
+      );
+      canvas.drawCircle(
+        Offset(46 + cos(animTime * 22) * 5, torsoCenterY - 2),
+        2.5,
+        _waterSprayPaint,
+      );
     }
 
     // 6. Kafa, Boyun ve Yüz (Nefes & tilt senkronize)
@@ -225,7 +301,21 @@ class FirefighterCharacterPainter extends CustomPainter {
     canvas.rotate(headTilt);
 
     // Yüz tabanı
-    canvas.drawCircle(const Offset(0, 0), 15, _skinPaint);
+    canvas.drawCircle(const Offset(0, 0), 15, Paint()..color = skinColor);
+    if (isFemale) {
+      final hairPaint = Paint()..color = const Color(0xFF4A2518);
+      canvas.drawArc(
+        const Rect.fromLTWH(-16, -14, 32, 34),
+        pi,
+        pi,
+        false,
+        hairPaint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5,
+      );
+      canvas.drawCircle(const Offset(-14, 7), 4, hairPaint);
+      canvas.drawCircle(const Offset(14, 7), 4, hairPaint);
+    }
 
     // Gözler ve Göz Kırpma
     if (isBlinking) {
@@ -266,8 +356,10 @@ class FirefighterCharacterPainter extends CustomPainter {
     canvas.drawPath(mouthPath, _mouthPaint);
 
     // 7. İtfaiyeci Kaskı (Görsel Derinlikli, Siperlikli ve Bröveli)
-    final helmetPaint = Paint()..color = helmetColor;
-    final helmetBackPaint = Paint()..color = Color.lerp(helmetColor, Colors.black, 0.25)!;
+    final helmetPaint = Paint()
+      ..color = hatStyle == 1 ? accessoryColor : helmetColor;
+    final helmetBackPaint = Paint()
+      ..color = Color.lerp(helmetColor, Colors.black, 0.25)!;
 
     // Kask Arka Etekliği (Ense koruyucu siper)
     canvas.drawArc(
@@ -279,13 +371,27 @@ class FirefighterCharacterPainter extends CustomPainter {
     );
 
     // Kask Kubbesi
-    canvas.drawArc(
-      Rect.fromCenter(center: const Offset(0, -6), width: 34, height: 28),
-      pi,
-      pi,
-      true,
-      helmetPaint,
-    );
+    if (hatStyle != 2) {
+      canvas.drawArc(
+        Rect.fromCenter(center: const Offset(0, -6), width: 34, height: 28),
+        pi,
+        pi,
+        true,
+        helmetPaint,
+      );
+    } else {
+      canvas.drawArc(
+        Rect.fromCenter(center: const Offset(0, -7), width: 34, height: 28),
+        pi,
+        pi,
+        true,
+        Paint()..color = accessoryColor,
+      );
+      canvas.drawRect(
+        const Rect.fromLTWH(-18, -5, 36, 4),
+        Paint()..color = accessoryColor,
+      );
+    }
 
     // Kask Ön Siperliği (Geniş kenarlık)
     final brimPath = Path();
@@ -320,7 +426,13 @@ class FirefighterCharacterPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _drawLeg(Canvas canvas, double x, double y, double angle, Paint suitPaint) {
+  void _drawLeg(
+    Canvas canvas,
+    double x,
+    double y,
+    double angle,
+    Paint suitPaint,
+  ) {
     canvas.save();
     canvas.translate(x, y);
     canvas.rotate(angle);
@@ -397,6 +509,11 @@ class AnimatedFirefighterWidget extends StatefulWidget {
   final Color helmetColor;
   final bool showShadow;
   final bool showHose;
+  final bool isFemale;
+  final Color accessoryColor;
+  final Color skinColor;
+  final int hatStyle;
+  final int accessoryStyle;
 
   const AnimatedFirefighterWidget({
     super.key,
@@ -407,10 +524,16 @@ class AnimatedFirefighterWidget extends StatefulWidget {
     this.helmetColor = const Color(0xFFFBBF24),
     this.showShadow = true,
     this.showHose = true,
+    this.isFemale = false,
+    this.accessoryColor = const Color(0xFF38BDF8),
+    this.skinColor = const Color(0xFFFFD1A4),
+    this.hatStyle = 0,
+    this.accessoryStyle = 0,
   });
 
   @override
-  State<AnimatedFirefighterWidget> createState() => _AnimatedFirefighterWidgetState();
+  State<AnimatedFirefighterWidget> createState() =>
+      _AnimatedFirefighterWidgetState();
 }
 
 class _AnimatedFirefighterWidgetState extends State<AnimatedFirefighterWidget>
@@ -449,6 +572,11 @@ class _AnimatedFirefighterWidgetState extends State<AnimatedFirefighterWidget>
             helmetColor: widget.helmetColor,
             showShadow: widget.showShadow,
             showHose: widget.showHose,
+            isFemale: widget.isFemale,
+            accessoryColor: widget.accessoryColor,
+            skinColor: widget.skinColor,
+            hatStyle: widget.hatStyle,
+            accessoryStyle: widget.accessoryStyle,
           ),
         );
       },

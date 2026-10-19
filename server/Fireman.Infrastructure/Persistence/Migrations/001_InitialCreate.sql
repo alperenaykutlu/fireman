@@ -15,6 +15,17 @@ CREATE TABLE IF NOT EXISTS "Users" (
 
 CREATE INDEX IF NOT EXISTS "IX_Users_Status" ON "Users" ("Status");
 
+CREATE TABLE IF NOT EXISTS character_customizations (
+    "ProfileId" uuid NOT NULL PRIMARY KEY,
+    "Gender" character varying(10) NOT NULL DEFAULT 'male',
+    "Hat" character varying(80) NOT NULL DEFAULT 'Standart kask',
+    "HatStyle" integer NOT NULL DEFAULT 0,
+    "Suit" character varying(80) NOT NULL DEFAULT 'Klasik itfaiye ceketi',
+    "SuitStyle" integer NOT NULL DEFAULT 0,
+    "Accessory" character varying(80) NOT NULL DEFAULT 'Hortum seti',
+    "UpdatedAt" timestamp with time zone NOT NULL DEFAULT (now() at time zone 'utc')
+);
+
 CREATE TABLE IF NOT EXISTS "Characters" (
     "Id" uuid NOT NULL PRIMARY KEY,
     "UserId" uuid NOT NULL UNIQUE REFERENCES "Users"("Id") ON DELETE CASCADE,

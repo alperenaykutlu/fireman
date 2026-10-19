@@ -5,6 +5,12 @@ class CharacterModel {
   final int experience;
   final String? equippedHat;
   final String? equippedSuit;
+  final String gender;
+  final String equippedAccessory;
+  final int hatStyle;
+  final int suitStyle;
+  final int skinColorValue;
+  final int suitColorValue;
 
   CharacterModel({
     required this.id,
@@ -13,6 +19,12 @@ class CharacterModel {
     required this.experience,
     this.equippedHat,
     this.equippedSuit,
+    this.gender = 'male',
+    this.equippedAccessory = 'Standart Aksesuar',
+    this.hatStyle = 0,
+    this.suitStyle = 0,
+    this.skinColorValue = 0xFFFFD1A4,
+    this.suitColorValue = 0xFFDC2626,
   });
 
   factory CharacterModel.fromJson(Map<String, dynamic> json) {
@@ -23,6 +35,12 @@ class CharacterModel {
       experience: json['experience'] ?? 0,
       equippedHat: json['equippedHat'],
       equippedSuit: json['equippedSuit'],
+      gender: json['gender'] ?? 'male',
+      equippedAccessory: json['equippedAccessory'] ?? 'Standart Aksesuar',
+      hatStyle: json['hatStyle'] ?? 0,
+      suitStyle: json['suitStyle'] ?? 0,
+      skinColorValue: json['skinColorValue'] ?? 0xFFFFD1A4,
+      suitColorValue: json['suitColorValue'] ?? 0xFFDC2626,
     );
   }
 }

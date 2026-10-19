@@ -6,9 +6,12 @@ import '../core/character/character_state.dart';
 import '../core/constants.dart';
 import '../models/user_profile.dart';
 import '../viewmodels/gameplay_viewmodel.dart';
+import '../services/api_service.dart';
+import 'connection_notice.dart';
 import 'character_screen.dart';
 import 'gameplay_screen.dart';
 import 'lobby_screen.dart';
+import '../widgets/menu_buttons.dart';
 
 class MainMenuScreen extends StatefulWidget {
   final UserProfile profile;
@@ -19,7 +22,8 @@ class MainMenuScreen extends StatefulWidget {
   State<MainMenuScreen> createState() => _MainMenuScreenState();
 }
 
-class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProviderStateMixin {
+class _MainMenuScreenState extends State<MainMenuScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _idleAnimController;
   late Animation<double> _breathAnim;
   late Animation<double> _swayAnim;
@@ -54,11 +58,16 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
       builder: (ctx) {
         return AlertDialog(
           backgroundColor: AppConstants.bgCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Row(
             children: [
               Text('🎮 ', style: TextStyle(fontSize: 22)),
-              Text('Tek Oyna (Offline)', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                'Tek Oyna (Offline)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           content: Column(
@@ -86,8 +95,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
 
   Widget _buildPlayerCountButton(int count, String label) {
     return InkWell(
-      onTap: () {
+      onTap: () async {
         Navigator.pop(context);
+        final online = await context.read<ApiService>().checkInternetConnection();
+        if (!online) {
+          final shouldContinue = await confirmOfflinePlay(context, () => context.read<ApiService>().checkInternetConnection());
+          if (!shouldContinue || !mounted) return;
+        }
         context.read<GameplayViewModel>().setPlayerCount(count);
         Navigator.push(
           context,
@@ -104,9 +118,20 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
         ),
         child: Column(
           children: [
-            Text('$count', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppConstants.fireOrange)),
+            Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppConstants.fireOrange,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, color: Colors.white70)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 10, color: Colors.white70),
+            ),
           ],
         ),
       ),
@@ -119,7 +144,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
       builder: (ctx) {
         return AlertDialog(
           backgroundColor: AppConstants.bgCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('⚙️ Oyun Ayarları'),
           content: const Column(
             mainAxisSize: MainAxisSize.min,
@@ -141,8 +168,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Kapat', style: TextStyle(color: Colors.white70)),
-            )
+              child: const Text(
+                'Kapat',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
           ],
         );
       },
@@ -153,47 +183,238 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
     showDialog(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
+        final size = MediaQuery.sizeOf(ctx);
+        final dialogHeight = min(520.0, size.height * .88);
+        final topThree = [
+          ('Su_Püskürten_99', '62,450', const Color(0xFFC0C9D5)),
+          ('Kaptan_Alev', '84,200', AppConstants.gold),
+          ('Demir_Hortum', '49,100', const Color(0xFFCD7F32)),
+        ];
+        return Dialog(
           backgroundColor: AppConstants.bgCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('🏆 Liderlik Tablosu'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildLeaderboardRow(1, 'Kaptan_Alev', '84,200', true),
-                _buildLeaderboardRow(2, 'Su_Püskürten_99', '62,450', false),
-                _buildLeaderboardRow(3, 'Demir_Hortum', '49,100', false),
-                _buildLeaderboardRow(widget.profile.rank, widget.profile.username, '${widget.profile.totalScore}', true, isMe: true),
-              ],
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 12,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: SizedBox(
+            width: min(560.0, size.width - 36),
+            height: dialogHeight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.emoji_events_rounded,
+                        color: AppConstants.gold,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Liderlik Tablosu',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Kapat',
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close, size: 20),
+                      ),
+                    ],
+                  ),
+                  const Text(
+                    'Sezonun en başarılı itfaiyecileri',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: min(108.0, dialogHeight * .34),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: List.generate(
+                        3,
+                        (index) => Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: _buildPodiumTile(
+                              index == 1 ? 1 : (index == 0 ? 2 : 3),
+                              topThree[index].$1,
+                              topThree[index].$2,
+                              topThree[index].$3,
+                              height: index == 1 ? 96 : (index == 0 ? 80 : 72),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Sıralama',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        for (var rank = 4; rank <= 8; rank++)
+                          if (rank != widget.profile.rank)
+                            _buildLeaderboardRow(
+                              rank,
+                              [
+                                'AlevNöbetçisi',
+                                'KurtarmaEkibi',
+                                'MaviKask',
+                                'GeceVardiyası',
+                                'Cesurİtfaiyeci',
+                              ][rank - 4],
+                              '${42000 - (rank - 4) * 3750}',
+                            ),
+                        _buildLeaderboardRow(
+                          widget.profile.rank,
+                          widget.profile.username,
+                          '${widget.profile.totalScore}',
+                          isMe: true,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Kapat', style: TextStyle(color: Colors.white70)),
-            )
-          ],
         );
       },
     );
   }
 
-  Widget _buildLeaderboardRow(int rank, String name, String score, bool isTop, {bool isMe = false}) {
+  Widget _buildPodiumTile(
+    int rank,
+    String name,
+    String score,
+    Color accent, {
+    required double height,
+  }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       decoration: BoxDecoration(
-        color: isMe ? AppConstants.fireOrange.withValues(alpha: 0.2) : AppConstants.bgDark,
-        borderRadius: BorderRadius.circular(8),
-        border: isMe ? Border.all(color: AppConstants.fireOrange) : null,
+        color: accent.withValues(alpha: .12),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(14),
+          bottom: Radius.circular(8),
+        ),
+        border: Border.all(color: accent.withValues(alpha: .55)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            rank == 1 ? Icons.workspace_premium : Icons.military_tech,
+            color: accent,
+            size: rank == 1 ? 22 : 18,
+          ),
+          Text(
+            '#$rank',
+            style: TextStyle(
+              color: accent,
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
+            ),
+          ),
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+          ),
+          Text(
+            score,
+            maxLines: 1,
+            style: TextStyle(color: accent, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLeaderboardRow(
+    int rank,
+    String name,
+    String score, {
+    bool isMe = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: isMe
+            ? AppConstants.fireOrange.withValues(alpha: 0.2)
+            : AppConstants.bgDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isMe ? AppConstants.fireOrange : AppConstants.borderCard,
+        ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('#$rank  $name ${isMe ? "(Sen)" : ""}', style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
-          Text('$score Puan', style: const TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold)),
+          SizedBox(
+            width: 34,
+            child: Text(
+              '#$rank',
+              style: const TextStyle(
+                color: Colors.white60,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              name.isEmpty ? 'Oyuncu' : name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: isMe ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+          ),
+          if (isMe)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Text(
+                'SEN',
+                style: TextStyle(
+                  color: AppConstants.fireOrange,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          Text(
+            '$score puan',
+            style: const TextStyle(
+              color: AppConstants.gold,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
@@ -201,6 +422,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
+    final compactLandscape = MediaQuery.sizeOf(context).height < 430;
     return Scaffold(
       backgroundColor: AppConstants.bgDark,
       body: SafeArea(
@@ -208,7 +430,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
           children: [
             // ÜST BAŞLIK & PROFİL ADI
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              padding: EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: compactLandscape ? 5 : 14,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -217,18 +442,32 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
                       const Text('🔥 ', style: TextStyle(fontSize: 24)),
                       Text(
                         widget.profile.username,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: AppConstants.bgCard,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AppConstants.borderCard),
                     ),
-                    child: const Text('ONLINE 🟢', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppConstants.waterCyan)),
+                    child: const Text(
+                      'ONLINE 🟢',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: AppConstants.waterCyan,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -256,16 +495,43 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
                           children: [
                             const Row(
                               children: [
-                                Icon(Icons.bar_chart, color: AppConstants.fireOrange, size: 20),
+                                Icon(
+                                  Icons.bar_chart,
+                                  color: AppConstants.fireOrange,
+                                  size: 20,
+                                ),
                                 SizedBox(width: 8),
-                                Text('İSTATİSTİKLER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                                Text(
+                                  'İSTATİSTİKLER',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
                               ],
                             ),
                             const Divider(color: AppConstants.borderCard),
-                            _buildStatItem('Kazanılan Puan', '${widget.profile.totalScore} 🪙', AppConstants.gold),
-                            _buildStatItem('Oynanan Oyun', '${widget.profile.gamesPlayed}', Colors.white),
-                            _buildStatItem('Kazanılan Oyun', '${widget.profile.gamesWon}', AppConstants.waterCyan),
-                            _buildStatItem('Mevcut Sıralama', '#${widget.profile.rank}', AppConstants.fireOrange),
+                            _buildStatItem(
+                              'Kazanılan Puan',
+                              '${widget.profile.totalScore} 🪙',
+                              AppConstants.gold,
+                            ),
+                            _buildStatItem(
+                              'Oynanan Oyun',
+                              '${widget.profile.gamesPlayed}',
+                              Colors.white,
+                            ),
+                            _buildStatItem(
+                              'Kazanılan Oyun',
+                              '${widget.profile.gamesWon}',
+                              AppConstants.waterCyan,
+                            ),
+                            _buildStatItem(
+                              'Mevcut Sıralama',
+                              '#${widget.profile.rank}',
+                              AppConstants.fireOrange,
+                            ),
                           ],
                         ),
                       ),
@@ -291,9 +557,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
                               animation: _idleAnimController,
                               builder: (context, child) {
                                 return Transform.translate(
-                                  offset: Offset(0, sin(_idleAnimController.value * pi) * 6), // Dikey nefes alma
+                                  offset: Offset(
+                                    0,
+                                    sin(_idleAnimController.value * pi) * 6,
+                                  ), // Dikey nefes alma
                                   child: Transform.rotate(
-                                    angle: _swayAnim.value, // Hafif sağa sola sallanma
+                                    angle: _swayAnim
+                                        .value, // Hafif sağa sola sallanma
                                     child: Transform.scale(
                                       scale: _breathAnim.value,
                                       child: child,
@@ -302,33 +572,47 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
                                 );
                               },
                               child: Container(
-                                width: 120,
-                                height: 140,
+                                width: compactLandscape ? 76 : 120,
+                                height: compactLandscape ? 84 : 140,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppConstants.waterBlue.withValues(alpha: 0.25),
+                                      color: AppConstants.waterBlue.withValues(
+                                        alpha: 0.25,
+                                      ),
                                       blurRadius: 20,
                                       spreadRadius: 6,
-                                    )
+                                    ),
                                   ],
                                 ),
-                              child: const AnimatedFirefighterWidget(
-                                size: 120,
-                                state: CharacterAnimState.idle,
-                              ),
+                                child: AnimatedFirefighterWidget(
+                                  size: compactLandscape ? 76 : 120,
+                                  state: CharacterAnimState.idle,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            SizedBox(height: compactLandscape ? 3 : 12),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppConstants.bgDark,
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppConstants.borderCard),
+                                border: Border.all(
+                                  color: AppConstants.borderCard,
+                                ),
                               ),
-                              child: const Text('Kıdemli İtfaiyeci', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70)),
+                              child: const Text(
+                                'Kıdemli İtfaiyeci',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white70,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -339,11 +623,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
               ),
             ),
 
-            const SizedBox(height: 16),
+            SizedBox(height: compactLandscape ? 6 : 16),
 
             // ALT BÖLÜM: 6 SEÇENEK BUTONLARI (TEK OYNA, ONLİNE OYNA, TABLO, DÜZENLE, AYARLAR, ÇIKIŞ)
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(compactLandscape ? 7 : 16),
               decoration: const BoxDecoration(
                 color: AppConstants.bgCard,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -354,57 +638,77 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
                   Row(
                     children: [
                       Expanded(
-                        child: _buildMenuButton(
+                        child: FiremanMenuButton(
                           title: 'TEK OYNA',
                           subtitle: '2, 3 veya 4 Kişilik',
                           icon: Icons.sports_esports,
-                          gradient: const [Color(0xFFFF5722), Color(0xFFFF9800)],
+                          gradient: const [
+                            Color(0xFFFF5722),
+                            Color(0xFFFF9800),
+                          ],
                           onTap: _showOfflinePlayerCountDialog,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: _buildMenuButton(
+                        child: FiremanMenuButton(
                           title: 'ONLINE OYNA',
                           subtitle: '4 Kişilik Eşleşme',
                           icon: Icons.public,
-                          gradient: const [Color(0xFF0070F3), Color(0xFF00C6FF)],
+                          gradient: const [
+                            Color(0xFF0070F3),
+                            Color(0xFF00C6FF),
+                          ],
                           onTap: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const LobbyScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => const LobbyScreen(),
+                              ),
                             );
                           },
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: compactLandscape ? 5 : 10),
                   // Alt Sıra: Yardımcı Seçenekler (Tablo, Düzenle, Ayarlar, Çıkış)
                   Row(
                     children: [
-                      _buildMiniButton(icon: Icons.leaderboard, label: 'Tablo', onTap: _showLeaderboardDialog),
+                      FiremanMiniButton(
+                        icon: Icons.leaderboard,
+                        label: 'Tablo',
+                        onTap: _showLeaderboardDialog,
+                      ),
                       const SizedBox(width: 8),
-                      _buildMiniButton(
+                      FiremanMiniButton(
                         icon: Icons.checkroom,
                         label: 'Düzenle',
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const CharacterScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => CharacterScreen(username: widget.profile.username),
+                            ),
                           );
                         },
                       ),
                       const SizedBox(width: 8),
-                      _buildMiniButton(icon: Icons.settings, label: 'Ayarlar', onTap: _showSettingsDialog),
+                      FiremanMiniButton(
+                        icon: Icons.settings,
+                        label: 'Ayarlar',
+                        onTap: _showSettingsDialog,
+                      ),
                       const SizedBox(width: 8),
-                      _buildMiniButton(
+                      FiremanMiniButton(
                         icon: Icons.exit_to_app,
                         label: 'Çıkış',
                         color: Colors.redAccent,
                         onTap: () {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Oyundan çıkılıyor...')),
+                            const SnackBar(
+                              content: Text('Oyundan çıkılıyor...'),
+                            ),
                           );
                         },
                       ),
@@ -423,78 +727,21 @@ class _MainMenuScreenState extends State<MainMenuScreen> with SingleTickerProvid
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 11, color: Colors.white54),
+        ),
         const SizedBox(height: 2),
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: valueColor)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: valueColor,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildMenuButton({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required List<Color> gradient,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(color: gradient.first.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3)),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 28),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color color = Colors.white,
-  }) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: AppConstants.bgDark,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppConstants.borderCard),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(height: 4),
-              Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

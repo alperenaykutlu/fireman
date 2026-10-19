@@ -24,6 +24,7 @@ public class FiremanDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<Character> Characters => Set<Character>();
     public DbSet<CharacterEquipment> CharacterEquipments => Set<CharacterEquipment>();
+    public DbSet<CharacterCustomization> CharacterCustomizations => Set<CharacterCustomization>();
     public DbSet<ItemDefinition> ItemDefinitions => Set<ItemDefinition>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<Mission> Missions => Set<Mission>();

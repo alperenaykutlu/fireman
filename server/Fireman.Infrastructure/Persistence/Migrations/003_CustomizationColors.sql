@@ -1,0 +1,3 @@
+ALTER TABLE character_customizations
+    ADD COLUMN IF NOT EXISTS "SkinColorValue" bigint NOT NULL DEFAULT 4294955428,
+    ADD COLUMN IF NOT EXISTS "SuitColorValue" bigint NOT NULL DEFAULT 4292617766;

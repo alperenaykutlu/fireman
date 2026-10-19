@@ -11,6 +11,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./server/Fireman.Infrastructure/Persistence/Migrations/001_InitialCreate.sql:/docker-entrypoint-initdb.d/001_InitialCreate.sql:ro
+      - ./server/Fireman.Infrastructure/Persistence/Migrations/002_CharacterCustomizations.sql:/docker-entrypoint-initdb.d/002_CharacterCustomizations.sql:ro
+      - ./server/Fireman.Infrastructure/Persistence/Migrations/003_CustomizationColors.sql:/docker-entrypoint-initdb.d/003_CustomizationColors.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fireman -d fireman_db"]
       interval: 5s

@@ -82,6 +82,7 @@ class ArenaFighter {
   double speed;
   double moveCooldown;
   PlayerStatus status;
+  bool isDisconnected;
 
   ArenaFighter({
     required this.id,
@@ -98,5 +99,6 @@ class ArenaFighter {
     this.speed = 0.7,
     this.moveCooldown = 0.0,
     this.status = PlayerStatus.alive,
+    this.isDisconnected = false,
   });
 }

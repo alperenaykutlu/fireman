@@ -8,6 +8,7 @@ import '../core/particles/game_particles.dart';
 import '../core/responsive/responsive_layout.dart';
 import '../models/user_profile.dart';
 import 'main_menu_screen.dart';
+import '../widgets/power_up_card.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -55,14 +56,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _completeOnboarding() async {
     HapticFeedback.heavyImpact();
-    final username = _isCustomNameMode && _customNameCtrl.text.trim().isNotEmpty
-        ? _customNameCtrl.text.trim()
-        : _selectedHeroName;
+    final username = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const UsernameEntryScreen(),
+      ),
+    );
+    if (username == null || username.trim().isEmpty) return;
 
     final profile = await UserProfile.load();
     profile.username = username;
     await profile.save();
-    await UserProfile.setCompletedOnboarding(true);
+    await UserProfile.setOnboardingCompleted();
 
     if (mounted) {
       Navigator.of(context).pushReplacement(
@@ -75,6 +80,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final compactLandscape = MediaQuery.sizeOf(context).height < 430;
     return Scaffold(
       backgroundColor: const Color(0xFF090D14),
       body: Stack(
@@ -82,14 +88,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           // 1. KATMAN: Parallax Gece Gökyüzü ve Şehir Silueti
           Positioned.fill(
             child: CustomPaint(
-              painter: CinematicCitySkylinePainter(pageOffset: _currentPage.toDouble()),
+              painter: CinematicCitySkylinePainter(
+                pageOffset: _currentPage.toDouble(),
+              ),
             ),
           ),
 
           // 2. KATMAN: Yükselen Gerçek Zamanlı Kıvılcım Parçacıkları
-          const Positioned.fill(
-            child: AmbientEmberOverlay(maxParticles: 35),
-          ),
+          const Positioned.fill(child: AmbientEmberOverlay(maxParticles: 35)),
 
           // 3. KATMAN: Responsive İçerik ve PageView
           ResponsiveLayout(
@@ -97,7 +103,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: [
                 // Üst Bar: Başlık & Hızlı Atla Butonu
                 Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  padding: EdgeInsets.only(top: compactLandscape ? 2 : 12, bottom: compactLandscape ? 0 : 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -108,9 +114,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFFEF4444).withAlpha(40),
                               shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFEF4444)),
+                              border: Border.all(
+                                color: const Color(0xFFEF4444),
+                              ),
                             ),
-                            child: const Text('🚒', style: TextStyle(fontSize: 16)),
+                            child: const Text(
+                              '🚒',
+                              style: TextStyle(fontSize: 16),
+                            ),
                           ),
                           const SizedBox(width: 8),
                           const Text(
@@ -148,7 +159,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
 
                 // Ortadaki Dinamik Etkileşimli Kahraman (Karakter)
-                Expanded(
+                if (!compactLandscape) Expanded(
                   flex: 5,
                   child: Center(
                     child: GestureDetector(
@@ -163,11 +174,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ),
                           const SizedBox(height: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.black.withAlpha(140),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.amberAccent.withAlpha(80)),
+                              border: Border.all(
+                                color: Colors.amberAccent.withAlpha(80),
+                              ),
                             ),
                             child: const Text(
                               '👆 Dokun ve Gücü Gör!',
@@ -189,7 +205,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   flex: 5,
                   child: PageView(
                     controller: _pageController,
-                    onPageChanged: (page) => setState(() => _currentPage = page),
+                    onPageChanged: (page) =>
+                        setState(() => _currentPage = page),
                     children: [
                       _buildCinematicIntroPage(),
                       _buildMechanicsPage(),
@@ -229,11 +246,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           child: Text(
             'Labirent sokaklarda yangın büyüyor. Şehrin kaderi cesur bir itfaiyecinin ellerinde!',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              height: 1.45,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.45),
           ),
         ).animate().fadeIn(delay: 150.ms, duration: 400.ms),
       ],
@@ -259,56 +272,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildPowerCard('⚡', 'Şimşek', 'Alev menzilini genişlet', Colors.amber),
+            const PowerUpCard(icon: '⚡', title: 'Şimşek', description: 'Alev menzilini genişlet', color: Colors.amber),
             const SizedBox(width: 8),
-            _buildPowerCard('🛼', 'Paten', 'Hız kazan, kaç', Colors.cyan),
+            const PowerUpCard(icon: '🛼', title: 'Paten', description: 'Hız kazan, kaç', color: Colors.cyan),
             const SizedBox(width: 8),
-            _buildPowerCard('💣', 'Dinamit', 'Kapasiteyi katla', Colors.redAccent),
+            const PowerUpCard(icon: '💣', title: 'Dinamit', description: 'Kapasiteyi katla', color: Colors.redAccent),
           ],
         ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1, end: 0),
       ],
-    );
-  }
-
-  Widget _buildPowerCard(String icon, String title, String desc, Color color) {
-    return Container(
-      width: 95,
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161F2E),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withAlpha(120), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withAlpha(30),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 26)),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            desc,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 9,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -318,7 +289,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const Text(
-          'KAHRAMANINI SEÇ & BAŞLA',
+          'OYUNCU ADINI BELİRLE',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white,
@@ -329,13 +300,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Klavye gerekmeden tek dokunuşla hemen hazır ol:',
+          'Onboarding tamamlanınca kullanacağın adı gireceksin.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
 
         // Hızlı İsim Hapları (Pills)
-        Wrap(
+        if (MediaQuery.sizeOf(context).height >= 430) Wrap(
           spacing: 8,
           runSpacing: 8,
           alignment: WrapAlignment.center,
@@ -361,16 +332,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 fontSize: 12,
               ),
               side: BorderSide(
-                color: isSelected ? Colors.amberAccent : const Color(0xFF2E3A4E),
+                color: isSelected
+                    ? Colors.amberAccent
+                    : const Color(0xFF2E3A4E),
               ),
             );
           }).toList(),
         ),
 
-        const SizedBox(height: 8),
+        if (MediaQuery.sizeOf(context).height >= 430) const SizedBox(height: 8),
 
         // İsteğe Bağlı Kendi İsmini Gir Butonu
-        TextButton.icon(
+        if (MediaQuery.sizeOf(context).height >= 430) TextButton.icon(
           onPressed: () {
             setState(() => _isCustomNameMode = !_isCustomNameMode);
           },
@@ -380,7 +353,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             color: Colors.amberAccent,
           ),
           label: Text(
-            _isCustomNameMode ? 'Hazır İsimlere Dön' : 'Özel İsim Yaz (İsteğe Bağlı)',
+            _isCustomNameMode
+                ? 'Hazır İsimlere Dön'
+                : 'Özel İsim Yaz (İsteğe Bağlı)',
             style: const TextStyle(color: Colors.amberAccent, fontSize: 11),
           ),
         ),
@@ -395,10 +370,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Kahraman Adı',
-                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                  hintStyle: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 12,
+                  ),
                   filled: true,
                   fillColor: const Color(0xFF1E293B),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: const BorderSide(color: Colors.amberAccent),
@@ -414,7 +395,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// ALT KONTROL PANELİ
   Widget _buildBottomControls() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.only(bottom: MediaQuery.sizeOf(context).height < 430 ? 4 : 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -448,7 +429,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               }
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: MediaQuery.sizeOf(context).height < 430 ? 8 : 12),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
@@ -476,7 +457,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   const SizedBox(width: 6),
                   Icon(
-                    _currentPage == 2 ? Icons.play_arrow : Icons.arrow_forward_ios,
+                    _currentPage == 2
+                        ? Icons.play_arrow
+                        : Icons.arrow_forward_ios,
                     color: Colors.white,
                     size: 14,
                   ),
@@ -513,7 +496,10 @@ class CinematicCitySkylinePainter extends CustomPainter {
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), skyPaint);
 
     // Ay ve Kızıl Hale
-    final moonCenter = Offset(size.width * 0.82 - (pageOffset * 20), size.height * 0.16);
+    final moonCenter = Offset(
+      size.width * 0.82 - (pageOffset * 20),
+      size.height * 0.16,
+    );
     final glowPaint = Paint()
       ..color = const Color(0xFFFDE047).withAlpha(40)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
@@ -560,7 +546,10 @@ class CinematicCitySkylinePainter extends CustomPainter {
           Colors.transparent,
         ],
       ).createShader(Rect.fromLTWH(0, size.height * 0.88, size.width, 3));
-    canvas.drawRect(Rect.fromLTWH(0, size.height * 0.88, size.width, 2.5), lineGlow);
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.height * 0.88, size.width, 2.5),
+      lineGlow,
+    );
   }
 
   void _drawBuildings(
@@ -581,4 +570,85 @@ class CinematicCitySkylinePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CinematicCitySkylinePainter oldDelegate) =>
       oldDelegate.pageOffset != pageOffset;
+}
+
+class UsernameEntryScreen extends StatefulWidget {
+  const UsernameEntryScreen({super.key});
+
+  @override
+  State<UsernameEntryScreen> createState() => _UsernameEntryScreenState();
+}
+
+class _UsernameEntryScreenState extends State<UsernameEntryScreen> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _continue() {
+    final username = _controller.text.trim();
+    if (username.isEmpty) {
+      setState(() => _error = 'Devam etmek için bir oyuncu adı yaz.');
+      return;
+    }
+    Navigator.of(context).pop(username);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    resizeToAvoidBottomInset: true,
+    backgroundColor: const Color(0xFF090D14),
+    body: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: const EdgeInsets.all(18),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 36),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.local_fire_department, color: Color(0xFFFF7A36), size: 44),
+                    const SizedBox(height: 8),
+                    const Text('OYUNCU ADINI BELİRLE', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 1)),
+                    const SizedBox(height: 6),
+                    const Text('Bu ad oyun içindeki profilinde görünecek.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      maxLength: 18,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.done,
+                      scrollPadding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom + 28),
+                      onChanged: (_) { if (_error != null) setState(() => _error = null); },
+                      onSubmitted: (_) => _continue(),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Oyuncu adı',
+                        errorText: _error,
+                        filled: true,
+                        fillColor: const Color(0xFF172033),
+                        prefixIcon: const Icon(Icons.person_outline, color: Colors.amberAccent),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _continue, icon: const Icon(Icons.arrow_forward), label: const Text('OYUNA DEVAM ET'))),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
