@@ -11,7 +11,8 @@ enum PowerUpType {
   dynamiteRange, // Şimşek / fitil: Dinamit patlama menzili +1
   rollerSkate,   // Paten / ayakkabı: Hareket hızı artışı
   extraDynamite, // Dinamit: +1 dinamit koyma hakkı
-  shield,        // Zırh / can: Ekstra can/koruma
+  shield,        // Can yenileme: +10 HP
+  bombGlove,     // Eldiven: dinamitleri itip hareket ettirebilme
 }
 
 class Dynamite {
@@ -69,10 +70,18 @@ enum PlayerStatus {
 
 class ArenaFighter {
   final int id;
-  final String name;
-  final Color hatColor;
-  final Color bodyColor;
+  String name;
+  Color hatColor;
+  Color bodyColor;
+  Color skinColor;
+  bool isFemale;
+  int hatStyle;
+  int suitStyle;
+  int accessoryStyle;
+  int maskStyle;
+  int score;
   final bool isHuman;
+  final String? userId;
   int x;
   int y;
   int health;
@@ -83,13 +92,22 @@ class ArenaFighter {
   double moveCooldown;
   PlayerStatus status;
   bool isDisconnected;
+  bool canMoveDynamite;
 
   ArenaFighter({
     required this.id,
     required this.name,
     required this.hatColor,
     required this.bodyColor,
+    this.skinColor = const Color(0xFFFFD1A4),
+    this.isFemale = false,
+    this.hatStyle = 0,
+    this.suitStyle = 0,
+    this.accessoryStyle = 0,
+    this.maskStyle = -1,
+    this.score = 0,
     this.isHuman = false,
+    this.userId,
     required this.x,
     required this.y,
     this.health = 100,
@@ -100,5 +118,6 @@ class ArenaFighter {
     this.moveCooldown = 0.0,
     this.status = PlayerStatus.alive,
     this.isDisconnected = false,
+    this.canMoveDynamite = false,
   });
 }

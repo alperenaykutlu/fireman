@@ -4,8 +4,8 @@ namespace Fireman.Contracts.Matches;
 /// Client input packet sent every tick (30Hz) with sequence numbering.
 /// </summary>
 public record PlayerInputDto(
-    Guid MatchId,
-    Guid UserId,
+    string MatchId,
+    string UserId,
     long Seq,
     long ClientTick,
     byte MoveDir,     // 0: None, 1: Up, 2: Down, 3: Left, 4: Right
@@ -18,10 +18,13 @@ public record PlayerInputDto(
 /// Server authoritative world state broadcast sent at 15-20Hz to clients.
 /// </summary>
 public record WorldSnapshotDto(
-    Guid MatchId,
+    string MatchId,
     long Tick,
     ulong WorldHash,
     long LastAckedSeq,
+    int Columns,
+    int Rows,
+    List<byte> Tiles,
     List<PlayerSnapshotDto> Players,
     List<BombSnapshotDto> Bombs,
     List<FlameSnapshotDto> Flames,
@@ -32,18 +35,21 @@ public record WorldSnapshotDto(
 
 public record PlayerSnapshotDto(
     int PlayerId,
-    Guid UserId,
+    string UserId,
+    string Username,
     int SubTileX,
     int SubTileY,
     int Health,
     int BombCapacity,
     int BombRange,
     int Speed,
-    bool IsAlive
+    bool IsAlive,
+    int Score
 );
 
 public record BombSnapshotDto(
     int BombId,
+    int OwnerPlayerId,
     int TileX,
     int TileY,
     int RemainingTicks,

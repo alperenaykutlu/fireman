@@ -10,6 +10,7 @@ public interface IUserService
 {
     Task<Result<UserDto>> GetCurrentUserAsync(CancellationToken cancellationToken = default);
     Task<Result<UserDto>> ChangeUsernameAsync(ChangeUsernameRequest request, CancellationToken cancellationToken = default);
+    Task<Result<bool>> CloseAccountAsync(CancellationToken cancellationToken = default);
 }
 
 public class UserService : IUserService
@@ -68,5 +69,17 @@ public class UserService : IUserService
             user.Role,
             user.Status,
             user.CreatedAt));
+    }
+
+    public async Task<Result<bool>> CloseAccountAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_currentUser.UserId.HasValue)
+            return Result.Failure<bool>("Auth.Unauthorized", "User is not authenticated.");
+        var user = await _userRepository.GetByIdAsync(_currentUser.UserId.Value, cancellationToken);
+        if (user is null) return Result.Failure<bool>("User.NotFound", "User not found.");
+        user.Suspend();
+        await _userRepository.UpdateAsync(user, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result.Success(true);
     }
 }

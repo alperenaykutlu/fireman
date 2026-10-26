@@ -1,124 +1,52 @@
+using Fireman.Application.Common.Interfaces;
 using Fireman.Domain.Characters;
-using Fireman.Domain.Economy;
 using Fireman.Domain.Inventory;
-using Fireman.Domain.Matches;
-using Fireman.Domain.Missions;
 using Fireman.Domain.Users;
-using Fireman.Infrastructure.Persistence;
 
 namespace Fireman.Infrastructure.Persistence.Repositories;
 
-public class UserRepository : IUserRepository
+public sealed class UserRepository(IDocumentDatabase database) : IUserRepository
 {
-    private readonly InMemoryDbContext _context;
-
-    public UserRepository(InMemoryDbContext context) => _context = context;
-
-    public Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Users.GetValueOrDefault(id));
-
-    public Task<User?> GetByNormalizedUsernameAsync(string normalizedUsername, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Users.Values.FirstOrDefault(u => u.NormalizedUsername == normalizedUsername));
-
-    public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Users.Values.FirstOrDefault(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase)));
-
-    public Task<bool> ExistsByNormalizedUsernameAsync(string normalizedUsername, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Users.Values.Any(u => u.NormalizedUsername == normalizedUsername));
-
-    public Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Users.Values.Any(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase)));
-
-    public Task AddAsync(User user, CancellationToken cancellationToken = default)
-    {
-        _context.Users[user.Id] = user;
-        return Task.CompletedTask;
-    }
-
-    public Task UpdateAsync(User user, CancellationToken cancellationToken = default)
-    {
-        _context.Users[user.Id] = user;
-        return Task.CompletedTask;
-    }
+    private const string Collection = "users";
+    public Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => database.GetAsync<User>(Collection, id.ToString(), cancellationToken);
+    public async Task<User?> GetByNormalizedUsernameAsync(string normalizedUsername, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<User>(Collection, new Dictionary<string, string> { ["normalizedUsername"] = normalizedUsername }, cancellationToken)).FirstOrDefault();
+    public async Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<User>(Collection, new Dictionary<string, string> { ["email"] = email }, cancellationToken)).FirstOrDefault();
+    public async Task<bool> ExistsByNormalizedUsernameAsync(string normalizedUsername, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<User>(Collection, new Dictionary<string, string> { ["normalizedUsername"] = normalizedUsername }, cancellationToken)).Count > 0;
+    public async Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<User>(Collection, new Dictionary<string, string> { ["email"] = email }, cancellationToken)).Count > 0;
+    public Task AddAsync(User user, CancellationToken cancellationToken = default) => database.SetAsync(Collection, user.Id.ToString(), user, cancellationToken);
+    public Task UpdateAsync(User user, CancellationToken cancellationToken = default) => database.SetAsync(Collection, user.Id.ToString(), user, cancellationToken);
 }
 
-public class CharacterRepository : ICharacterRepository
+public sealed class CharacterRepository(IDocumentDatabase database) : ICharacterRepository
 {
-    private readonly InMemoryDbContext _context;
-
-    public CharacterRepository(InMemoryDbContext context) => _context = context;
-
-    public Task<Character?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Characters.GetValueOrDefault(id));
-
-    public Task<Character?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.Characters.Values.FirstOrDefault(c => c.UserId == userId));
-
-    public Task AddAsync(Character character, CancellationToken cancellationToken = default)
-    {
-        _context.Characters[character.Id] = character;
-        return Task.CompletedTask;
-    }
-
-    public Task UpdateAsync(Character character, CancellationToken cancellationToken = default)
-    {
-        _context.Characters[character.Id] = character;
-        return Task.CompletedTask;
-    }
+    private const string Collection = "characters";
+    public Task<Character?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => database.GetAsync<Character>(Collection, id.ToString(), cancellationToken);
+    public async Task<Character?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<Character>(Collection, new Dictionary<string, string> { ["userId"] = userId.ToString() }, cancellationToken)).FirstOrDefault();
+    public Task AddAsync(Character character, CancellationToken cancellationToken = default) => database.SetAsync(Collection, character.Id.ToString(), character, cancellationToken);
+    public Task UpdateAsync(Character character, CancellationToken cancellationToken = default) => database.SetAsync(Collection, character.Id.ToString(), character, cancellationToken);
 }
 
-public class InventoryRepository : IInventoryRepository
+public sealed class InventoryRepository(IDocumentDatabase database) : IInventoryRepository
 {
-    private readonly InMemoryDbContext _context;
-
-    public InventoryRepository(InMemoryDbContext context) => _context = context;
-
-    public Task<IReadOnlyList<InventoryItem>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
-    {
-        var items = _context.InventoryItems.Values.Where(i => i.UserId == userId).ToList();
-        return Task.FromResult<IReadOnlyList<InventoryItem>>(items);
-    }
-
-    public Task<InventoryItem?> GetByUserAndItemDefinitionIdAsync(Guid userId, Guid itemDefinitionId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.InventoryItems.Values.FirstOrDefault(i => i.UserId == userId && i.ItemDefinitionId == itemDefinitionId));
-
-    public Task AddAsync(InventoryItem item, CancellationToken cancellationToken = default)
-    {
-        _context.InventoryItems[item.Id] = item;
-        return Task.CompletedTask;
-    }
-
-    public Task UpdateAsync(InventoryItem item, CancellationToken cancellationToken = default)
-    {
-        _context.InventoryItems[item.Id] = item;
-        return Task.CompletedTask;
-    }
-
-    public Task RemoveAsync(InventoryItem item, CancellationToken cancellationToken = default)
-    {
-        _context.InventoryItems.TryRemove(item.Id, out _);
-        return Task.CompletedTask;
-    }
+    private const string Collection = "inventoryItems";
+    public async Task<IReadOnlyList<InventoryItem>> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        await database.FindAsync<InventoryItem>(Collection, new Dictionary<string, string> { ["userId"] = userId.ToString() }, cancellationToken);
+    public async Task<InventoryItem?> GetByUserAndItemDefinitionIdAsync(Guid userId, Guid itemDefinitionId, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<InventoryItem>(Collection, new Dictionary<string, string> { ["userId"] = userId.ToString(), ["itemDefinitionId"] = itemDefinitionId.ToString() }, cancellationToken)).FirstOrDefault();
+    public Task AddAsync(InventoryItem item, CancellationToken cancellationToken = default) => database.SetAsync(Collection, item.Id.ToString(), item, cancellationToken);
+    public Task UpdateAsync(InventoryItem item, CancellationToken cancellationToken = default) => database.SetAsync(Collection, item.Id.ToString(), item, cancellationToken);
+    public Task RemoveAsync(InventoryItem item, CancellationToken cancellationToken = default) => database.DeleteAsync(Collection, item.Id.ToString(), cancellationToken);
 }
 
-public class ItemDefinitionRepository : IItemDefinitionRepository
+public sealed class ItemDefinitionRepository(IDocumentDatabase database) : IItemDefinitionRepository
 {
-    private readonly InMemoryDbContext _context;
-
-    public ItemDefinitionRepository(InMemoryDbContext context) => _context = context;
-
-    public Task<IReadOnlyList<ItemDefinition>> GetAllAsync(CancellationToken cancellationToken = default)
-    {
-        var items = _context.ItemDefinitions.Values.ToList();
-        return Task.FromResult<IReadOnlyList<ItemDefinition>>(items);
-    }
-
-    public Task<ItemDefinition?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_context.ItemDefinitions.GetValueOrDefault(id));
-
-    public Task AddAsync(ItemDefinition itemDefinition, CancellationToken cancellationToken = default)
-    {
-        _context.ItemDefinitions[itemDefinition.Id] = itemDefinition;
-        return Task.CompletedTask;
-    }
+    private const string Collection = "itemDefinitions";
+    public Task<IReadOnlyList<ItemDefinition>> GetAllAsync(CancellationToken cancellationToken = default) => database.GetAllAsync<ItemDefinition>(Collection, cancellationToken);
+    public Task<ItemDefinition?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => database.GetAsync<ItemDefinition>(Collection, id.ToString(), cancellationToken);
+    public Task AddAsync(ItemDefinition itemDefinition, CancellationToken cancellationToken = default) => database.SetAsync(Collection, itemDefinition.Id.ToString(), itemDefinition, cancellationToken);
 }

@@ -63,7 +63,7 @@ public class GameplayHudViewBinding : IScreen
     {
         if (OnMovementInput != null)
         {
-            var input = new PlayerInputDto(matchId, userId, seq, seq, moveDir, PlaceBomb: false, SubTileX: 0, SubTileY: 0);
+            var input = new PlayerInputDto(matchId.ToString("D"), userId.ToString("D"), seq, seq, moveDir, PlaceBomb: false, SubTileX: 0, SubTileY: 0);
             await OnMovementInput.Invoke(input);
         }
     }
@@ -72,7 +72,7 @@ public class GameplayHudViewBinding : IScreen
     {
         if (OnBombTriggered != null)
         {
-            var input = new PlayerInputDto(matchId, userId, seq, seq, MoveDir: 0, PlaceBomb: true, SubTileX: 0, SubTileY: 0);
+            var input = new PlayerInputDto(matchId.ToString("D"), userId.ToString("D"), seq, seq, MoveDir: 0, PlaceBomb: true, SubTileX: 0, SubTileY: 0);
             await OnBombTriggered.Invoke(input);
         }
     }

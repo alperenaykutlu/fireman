@@ -34,6 +34,14 @@ public class AuthController : BaseApiController
         return HandleResult(result);
     }
 
+    [HttpPost("google")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GoogleSignIn([FromBody] GoogleSignInRequest request, CancellationToken ct)
+    {
+        var result = await _authService.SignInWithGoogleAsync(request, ct);
+        return HandleResult(result);
+    }
+
     [HttpPost("refresh-token")]
     [AllowAnonymous]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request, CancellationToken ct)
@@ -89,7 +97,7 @@ public class UsersController : BaseApiController
     [HttpDelete("me")]
     public async Task<IActionResult> DeleteAccount(CancellationToken ct)
     {
-        // Graceful account deactivation / deletion initiation
-        return Ok(new { Message = "Hesap silme talebiniz alındı. 14 gün içinde kalıcı olarak silinecektir." });
+        var result = await _userService.CloseAccountAsync(ct);
+        return HandleResult(result);
     }
 }

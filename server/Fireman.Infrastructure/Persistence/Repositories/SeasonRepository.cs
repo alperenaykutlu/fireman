@@ -1,75 +1,36 @@
+using Fireman.Application.Common.Interfaces;
 using Fireman.Domain.Seasons;
+using Fireman.Shared.Enums;
 
 namespace Fireman.Infrastructure.Persistence.Repositories;
 
-public class SeasonRepository : ISeasonRepository
+public sealed class SeasonRepository(IDocumentDatabase database) : ISeasonRepository
 {
-    private readonly List<Season> _seasons = new();
-    private readonly List<UserSeasonProgress> _progresses = new();
+    private const string Seasons = "seasons";
+    private const string Progress = "seasonProgress";
 
-    public SeasonRepository()
+    public async Task<Season?> GetCurrentActiveSeasonAsync(CancellationToken cancellationToken = default)
     {
-        // Seed default Season 1: Inferno Dawn
-        var season1 = Season.Create(
-            1,
-            "Season 1: Inferno Dawn",
-            DateTime.UtcNow.AddDays(-5),
-            DateTime.UtcNow.AddDays(25));
+        var seasons = await database.GetAllAsync<Season>(Seasons, cancellationToken);
+        var current = seasons.FirstOrDefault(season => season.IsActive);
+        if (current is not null) return current;
+        if (seasons.Count != 0) return null;
 
-        season1.AddRewardTier(1, 100, Shared.Enums.RewardType.Coins, 250);
-        season1.AddRewardTier(2, 300, Shared.Enums.RewardType.Gems, 15);
-        season1.AddRewardTier(3, 600, Shared.Enums.RewardType.Coins, 750);
-        season1.AddRewardTier(4, 1000, Shared.Enums.RewardType.Gems, 30);
-
-        _seasons.Add(season1);
+        var seed = Season.Create(1, "Season 1: Inferno Dawn", DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(25));
+        seed.AddRewardTier(1, 100, RewardType.Coins, 250);
+        seed.AddRewardTier(2, 300, RewardType.Gems, 15);
+        seed.AddRewardTier(3, 600, RewardType.Coins, 750);
+        seed.AddRewardTier(4, 1000, RewardType.Gems, 30);
+        await database.SetAsync(Seasons, seed.Id.ToString(), seed, cancellationToken);
+        return seed;
     }
 
-    public Task<Season?> GetCurrentActiveSeasonAsync(CancellationToken cancellationToken = default)
-    {
-        lock (_seasons)
-        {
-            var now = DateTime.UtcNow;
-            var current = _seasons.FirstOrDefault(s => s.StartDate <= now && s.EndDate >= now);
-            return Task.FromResult(current);
-        }
-    }
+    public Task<Season?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => database.GetAsync<Season>(Seasons, id.ToString(), cancellationToken);
 
-    public Task<Season?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        lock (_seasons)
-        {
-            return Task.FromResult(_seasons.FirstOrDefault(s => s.Id == id));
-        }
-    }
+    public async Task<UserSeasonProgress?> GetUserProgressAsync(Guid userId, Guid seasonId, CancellationToken cancellationToken = default) =>
+        (await database.FindAsync<UserSeasonProgress>(Progress, new Dictionary<string, string> { ["userId"] = userId.ToString(), ["seasonId"] = seasonId.ToString() }, cancellationToken)).FirstOrDefault();
 
-    public Task<UserSeasonProgress?> GetUserProgressAsync(Guid userId, Guid seasonId, CancellationToken cancellationToken = default)
-    {
-        lock (_progresses)
-        {
-            return Task.FromResult(_progresses.FirstOrDefault(p => p.UserId == userId && p.SeasonId == seasonId));
-        }
-    }
-
-    public Task AddSeasonAsync(Season season, CancellationToken cancellationToken = default)
-    {
-        lock (_seasons)
-        {
-            _seasons.Add(season);
-        }
-        return Task.CompletedTask;
-    }
-
-    public Task AddUserProgressAsync(UserSeasonProgress progress, CancellationToken cancellationToken = default)
-    {
-        lock (_progresses)
-        {
-            _progresses.Add(progress);
-        }
-        return Task.CompletedTask;
-    }
-
-    public Task UpdateUserProgressAsync(UserSeasonProgress progress, CancellationToken cancellationToken = default)
-    {
-        return Task.CompletedTask;
-    }
+    public Task AddSeasonAsync(Season season, CancellationToken cancellationToken = default) => database.SetAsync(Seasons, season.Id.ToString(), season, cancellationToken);
+    public Task AddUserProgressAsync(UserSeasonProgress progress, CancellationToken cancellationToken = default) => database.SetAsync(Progress, progress.Id.ToString(), progress, cancellationToken);
+    public Task UpdateUserProgressAsync(UserSeasonProgress progress, CancellationToken cancellationToken = default) => database.SetAsync(Progress, progress.Id.ToString(), progress, cancellationToken);
 }

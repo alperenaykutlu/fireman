@@ -53,6 +53,7 @@ public sealed class WorldState
             hash = (hash ^ (ulong)p.Position.RawX) * prime;
             hash = (hash ^ (ulong)p.Position.RawY) * prime;
             hash = (hash ^ (ulong)p.Health) * prime;
+            hash = (hash ^ (ulong)p.Score) * prime;
             hash = (hash ^ (ulong)p.BombCapacity) * prime;
             hash = (hash ^ (ulong)p.BombRange) * prime;
             hash = (hash ^ (ulong)(p.IsAlive ? 1UL : 0UL)) * prime;

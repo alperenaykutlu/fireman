@@ -15,6 +15,7 @@ using Fireman.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Google.Cloud.Firestore;
 
 namespace Fireman.Infrastructure;
 
@@ -23,12 +24,35 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         // Persistence
-        var connectionString = configuration.GetConnectionString("DefaultConnection") 
-            ?? "Host=localhost;Database=fireman_db;Username=postgres;Password=postgres";
-        services.AddDbContext<FiremanDbContext>(options =>
-            options.UseNpgsql(connectionString));
+        var persistenceProvider = configuration["Persistence:Provider"] ?? "InMemory";
+        if (string.Equals(persistenceProvider, "Firestore", StringComparison.OrdinalIgnoreCase))
+        {
+            var projectId = configuration["Firebase:ProjectId"];
+            if (string.IsNullOrWhiteSpace(projectId))
+                throw new InvalidOperationException("Firebase:ProjectId is required when Persistence:Provider is Firestore.");
 
-        services.AddSingleton<InMemoryDbContext>();
+            services.AddSingleton(_ => FirestoreDb.Create(projectId));
+            services.AddSingleton<DatabaseCircuitBreaker>();
+            services.AddSingleton<IDocumentDatabase, FirestoreDocumentDatabase>();
+        }
+        else if (string.Equals(persistenceProvider, "InMemory", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<InMemoryDbContext>();
+            services.AddSingleton<IDocumentDatabase, InMemoryDocumentDatabase>();
+        }
+        else if (string.Equals(persistenceProvider, "Postgres", StringComparison.OrdinalIgnoreCase))
+        {
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required when Persistence:Provider is Postgres.");
+            services.AddDbContext<FiremanDbContext>(options => options.UseNpgsql(connectionString));
+            services.AddSingleton<DatabaseCircuitBreaker>();
+            services.AddScoped<IDocumentDatabase, PostgresDocumentDatabase>();
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unsupported Persistence:Provider '{persistenceProvider}'. Use Firestore, Postgres, or InMemory.");
+        }
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         // Repositories
@@ -45,6 +69,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<Fireman.Domain.Audit.IAuditLogRepository, Fireman.Infrastructure.Persistence.Repositories.AuditLogRepository>();
         services.AddScoped<Fireman.Domain.Social.IFriendshipRepository, Fireman.Infrastructure.Persistence.Repositories.FriendshipRepository>();
+        services.AddScoped<Fireman.Domain.Social.IDirectMessageRepository, Fireman.Infrastructure.Persistence.Repositories.DirectMessageRepository>();
         services.AddScoped<Fireman.Domain.Social.IPlayerReportRepository, Fireman.Infrastructure.Persistence.Repositories.PlayerReportRepository>();
         services.AddScoped<Fireman.Domain.Seasons.ISeasonRepository, Fireman.Infrastructure.Persistence.Repositories.SeasonRepository>();
         services.AddScoped<Fireman.Domain.Notifications.INotificationRepository, Fireman.Infrastructure.Persistence.Repositories.NotificationRepository>();
@@ -59,10 +84,12 @@ public static class DependencyInjection
 
         // Hosted Services
         services.AddHostedService<Fireman.Infrastructure.BackgroundServices.OutboxProcessorBackgroundService>();
+        services.AddHostedService<GameCatalogSeeder>();
 
         // Security & Tokens
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddSingleton<IGoogleIdentityVerifier, GoogleIdentityVerifier>();
 
         // Cache
         services.AddMemoryCache();

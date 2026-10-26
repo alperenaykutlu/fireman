@@ -10,8 +10,11 @@ namespace Fireman.Application.Social;
 public interface ISocialService
 {
     Task<Result<bool>> SendFriendRequestAsync(SendFriendRequest request, CancellationToken cancellationToken = default);
+    Task<Result<bool>> AddFriendByUsernameAsync(AddFriendByUsernameRequest request, CancellationToken cancellationToken = default);
     Task<Result<bool>> RespondFriendRequestAsync(RespondFriendRequest request, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<FriendDto>>> GetFriendsAsync(CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<DirectMessageDto>>> GetMessagesAsync(Guid friendId, CancellationToken cancellationToken = default);
+    Task<Result<DirectMessageDto>> SendMessageAsync(Guid friendId, SendDirectMessageRequest request, CancellationToken cancellationToken = default);
     Task<Result<bool>> SubmitReportAsync(SubmitReportRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -22,19 +25,22 @@ public class SocialService : ISocialService
     private readonly IUserRepository _userRepository;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDirectMessageRepository _messageRepository;
 
     public SocialService(
         IFriendshipRepository friendshipRepository,
         IPlayerReportRepository reportRepository,
         IUserRepository userRepository,
         ICurrentUser currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IDirectMessageRepository messageRepository)
     {
         _friendshipRepository = friendshipRepository;
         _reportRepository = reportRepository;
         _userRepository = userRepository;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _messageRepository = messageRepository;
     }
 
     public async Task<Result<bool>> SendFriendRequestAsync(SendFriendRequest request, CancellationToken cancellationToken = default)
@@ -66,6 +72,18 @@ public class SocialService : ISocialService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result.Success(true);
+    }
+
+    public async Task<Result<bool>> AddFriendByUsernameAsync(AddFriendByUsernameRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUser.UserId.HasValue)
+            return Result.Failure<bool>("Auth.Unauthorized", "User is not authenticated.");
+        if (string.IsNullOrWhiteSpace(request.Username))
+            return Result.Failure<bool>("Social.UsernameRequired", "Username is required.");
+        var target = await _userRepository.GetByNormalizedUsernameAsync(request.Username.Trim().ToUpperInvariant(), cancellationToken);
+        if (target is null)
+            return Result.Failure<bool>("User.NotFound", "Bu oyuncu adıyla kullanıcı bulunamadı.");
+        return await SendFriendRequestAsync(new SendFriendRequest(target.Id), cancellationToken);
     }
 
     public async Task<Result<bool>> RespondFriendRequestAsync(RespondFriendRequest request, CancellationToken cancellationToken = default)
@@ -116,7 +134,8 @@ public class SocialService : ISocialService
                 otherId,
                 user?.Username.Value ?? "Unknown",
                 f.Status,
-                f.CreatedAt));
+                f.CreatedAt,
+                f.FriendUserId == userId));
         }
 
         return Result.Success<IReadOnlyList<FriendDto>>(dtos);
@@ -137,5 +156,33 @@ public class SocialService : ISocialService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result.Success(true);
+    }
+
+    public async Task<Result<IReadOnlyList<DirectMessageDto>>> GetMessagesAsync(Guid friendId, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUser.UserId.HasValue) return Result.Failure<IReadOnlyList<DirectMessageDto>>("Auth.Unauthorized", "User is not authenticated.");
+        var userId = _currentUser.UserId.Value;
+        var friendship = await _friendshipRepository.GetBetweenUsersAsync(userId, friendId, cancellationToken);
+        if (friendship?.Status != FriendshipStatus.Accepted)
+            return Result.Failure<IReadOnlyList<DirectMessageDto>>("Social.NotFriends", "Messages are available only between friends.");
+        var messages = await _messageRepository.GetConversationAsync(userId, friendId, cancellationToken);
+        return Result.Success<IReadOnlyList<DirectMessageDto>>(messages.Select(m => new DirectMessageDto(m.Id, m.SenderUserId, m.SenderUsername, m.Body, m.CreatedAt)).ToList());
+    }
+
+    public async Task<Result<DirectMessageDto>> SendMessageAsync(Guid friendId, SendDirectMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUser.UserId.HasValue) return Result.Failure<DirectMessageDto>("Auth.Unauthorized", "User is not authenticated.");
+        if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Trim().Length > 500)
+            return Result.Failure<DirectMessageDto>("Social.InvalidMessage", "Message must be between 1 and 500 characters.");
+        var senderId = _currentUser.UserId.Value;
+        var friendship = await _friendshipRepository.GetBetweenUsersAsync(senderId, friendId, cancellationToken);
+        if (friendship?.Status != FriendshipStatus.Accepted)
+            return Result.Failure<DirectMessageDto>("Social.NotFriends", "Messages are available only between friends.");
+        var sender = await _userRepository.GetByIdAsync(senderId, cancellationToken);
+        if (sender is null) return Result.Failure<DirectMessageDto>("User.NotFound", "User not found.");
+        var message = new DirectMessage(senderId, friendId, sender.Username.Value, request.Message);
+        await _messageRepository.AddAsync(message, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result.Success(new DirectMessageDto(message.Id, message.SenderUserId, message.SenderUsername, message.Body, message.CreatedAt));
     }
 }

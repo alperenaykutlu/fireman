@@ -47,6 +47,7 @@ public sealed class PlayerState
     public FixedPos Position { get; set; }
     public int MoveSpeedSubUnitsPerTick { get; set; } = 8; // Default ~1 tile per second at 30 ticks/s
     public int Health { get; set; } = 1;
+    public int Score { get; set; }
     public int BombCapacity { get; set; } = 1;
     public int BombRange { get; set; } = 1;
     public int ActiveBombs { get; set; }
@@ -69,6 +70,8 @@ public sealed class FlameTile
     public int TileX { get; init; }
     public int TileY { get; init; }
     public int RemainingTicks { get; set; } // ~15 ticks (0.5s)
+    public int OwnerPlayerId { get; init; }
+    public HashSet<int> DamagedPlayerIds { get; } = [];
 }
 
 public sealed class PowerUpState

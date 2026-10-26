@@ -34,12 +34,27 @@ public class SocialController : BaseApiController
         return HandleResult(result);
     }
 
+    [HttpPost("friends/request-by-username")]
+    public async Task<IActionResult> AddFriendByUsername([FromBody] AddFriendByUsernameRequest request, CancellationToken ct)
+    {
+        var result = await _socialService.AddFriendByUsernameAsync(request, ct);
+        return HandleResult(result);
+    }
+
     [HttpPost("friends/respond")]
     public async Task<IActionResult> RespondFriendRequest([FromBody] RespondFriendRequest request, CancellationToken ct)
     {
         var result = await _socialService.RespondFriendRequestAsync(request, ct);
         return HandleResult(result);
     }
+
+    [HttpGet("friends/{friendId:guid}/messages")]
+    public async Task<IActionResult> GetMessages(Guid friendId, CancellationToken ct) =>
+        HandleResult(await _socialService.GetMessagesAsync(friendId, ct));
+
+    [HttpPost("friends/{friendId:guid}/messages")]
+    public async Task<IActionResult> SendMessage(Guid friendId, [FromBody] SendDirectMessageRequest request, CancellationToken ct) =>
+        HandleResult(await _socialService.SendMessageAsync(friendId, request, ct));
 
     [HttpPost("reports")]
     public async Task<IActionResult> SubmitReport([FromBody] SubmitReportRequest request, CancellationToken ct)

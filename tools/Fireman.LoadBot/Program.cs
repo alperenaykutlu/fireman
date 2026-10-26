@@ -71,8 +71,8 @@ internal static class Program
                         bool bomb = random.Next(100) < 5; // 5% chance to place bomb
 
                         var inputDto = new PlayerInputDto(
-                            MatchId: parsedMatchGuid,
-                            UserId: botUserId,
+                            MatchId: parsedMatchGuid.ToString("D"),
+                            UserId: botUserId.ToString("D"),
                             Seq: seq,
                             ClientTick: seq,
                             MoveDir: dir,

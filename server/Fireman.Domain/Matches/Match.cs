@@ -44,13 +44,15 @@ public class Match : AggregateRoot<Guid>
     public MatchStatus Status { get; private set; }
     public Guid HostUserId { get; private set; }
     public int MaxPlayers { get; private set; }
+    public string RoomName { get; private set; } = string.Empty;
+    public string? PasswordHash { get; private set; }
     public DateTime? StartedAt { get; private set; }
     public DateTime? FinishedAt { get; private set; }
     public IReadOnlyCollection<MatchPlayer> Players => _players.AsReadOnly();
 
     private Match() { }
 
-    public static Match Create(Guid hostUserId, string hostUsername, MatchType type, int maxPlayers = 4)
+    public static Match Create(Guid hostUserId, string hostUsername, MatchType type, int maxPlayers = 4, string roomName = "", string? passwordHash = null)
     {
         if (maxPlayers is < 1 or > 8)
             throw new ValidationException("Max players must be between 1 and 8.");
@@ -62,6 +64,8 @@ public class Match : AggregateRoot<Guid>
             Status = MatchStatus.Lobby,
             HostUserId = hostUserId,
             MaxPlayers = maxPlayers,
+            RoomName = string.IsNullOrWhiteSpace(roomName) ? $"Oda-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}" : roomName.Trim(),
+            PasswordHash = passwordHash,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -71,6 +75,9 @@ public class Match : AggregateRoot<Guid>
 
         return match;
     }
+
+    public bool HasPassword => !string.IsNullOrEmpty(PasswordHash);
+    public bool ValidatePassword(string? passwordHash) => !HasPassword || PasswordHash == passwordHash;
 
     public void Join(Guid userId, string username)
     {
@@ -89,9 +96,6 @@ public class Match : AggregateRoot<Guid>
 
     public void Leave(Guid userId)
     {
-        if (Status != MatchStatus.Lobby)
-            throw new DomainException("Cannot leave after match has started.");
-
         _players.RemoveAll(p => p.UserId == userId);
         if (!_players.Any())
         {
@@ -142,4 +146,5 @@ public interface IMatchRepository
     Task<IReadOnlyList<Match>> GetActiveMatchesAsync(CancellationToken cancellationToken = default);
     Task AddAsync(Match match, CancellationToken cancellationToken = default);
     Task UpdateAsync(Match match, CancellationToken cancellationToken = default);
+    Task RemoveAsync(Guid id, CancellationToken cancellationToken = default);
 }

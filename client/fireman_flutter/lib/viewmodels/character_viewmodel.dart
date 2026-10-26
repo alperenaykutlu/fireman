@@ -10,16 +10,17 @@ class CharacterViewModel extends ChangeNotifier {
   bool _isLoading = false;
 
   int _coins = 500;
-  int _hatUnlocked = 0, _suitUnlocked = 0, _accessoryUnlocked = 0;
+  final Map<String, int> _unlocked = {};
   final int _gems = 10;
 
   CharacterModel? get character => _character;
   bool get isLoading => _isLoading;
   int get coins => _coins;
   int get gems => _gems;
-  int get hatUnlocked => _hatUnlocked;
-  int get suitUnlocked => _suitUnlocked;
-  int get accessoryUnlocked => _accessoryUnlocked;
+  int get hatUnlocked => unlockedFor('hat');
+  int get suitUnlocked => unlockedFor('suit');
+  int get accessoryUnlocked => unlockedFor('accessory');
+  int unlockedFor(String category) => _unlocked[category] ?? 0;
 
   CharacterViewModel(this._apiService);
 
@@ -30,9 +31,9 @@ class CharacterViewModel extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _coins = prefs.getInt('character_coins') ?? 500;
-      _hatUnlocked = prefs.getInt('hat_unlocked') ?? 0;
-      _suitUnlocked = prefs.getInt('suit_unlocked') ?? 0;
-      _accessoryUnlocked = prefs.getInt('accessory_unlocked') ?? 0;
+      for (final category in ['hat', 'suit', 'accessory', 'mask', 'gloves', 'shoes', 'bomb']) {
+        _unlocked[category] = prefs.getInt('${category}_unlocked') ?? 0;
+      }
       var profileId = prefs.getString('character_profile_id');
       if (profileId == null) {
         profileId = _newProfileId();
@@ -56,6 +57,10 @@ class CharacterViewModel extends ChangeNotifier {
         suitStyle: prefs.getInt('character_suit_style') ?? 0,
         skinColorValue: prefs.getInt('character_skin_color') ?? 0xFFFFD1A4,
         suitColorValue: prefs.getInt('character_suit_color') ?? 0xFFDC2626,
+        equippedMask: prefs.getString('character_mask') ?? 'Standart maske',
+        equippedGloves: prefs.getString('character_gloves') ?? 'Standart eldiven',
+        equippedShoes: prefs.getString('character_shoes') ?? 'Standart ayakkabı',
+        equippedBomb: prefs.getString('character_bomb') ?? 'Klasik dinamit',
       );
       _isLoading = false;
       notifyListeners();
@@ -76,6 +81,10 @@ class CharacterViewModel extends ChangeNotifier {
         equippedAccessory: saved?['accessory'] ?? local.equippedAccessory,
         skinColorValue: saved?['skinColorValue'] ?? local.skinColorValue,
         suitColorValue: saved?['suitColorValue'] ?? local.suitColorValue,
+        equippedMask: saved?['mask'] ?? local.equippedMask,
+        equippedGloves: saved?['gloves'] ?? local.equippedGloves,
+        equippedShoes: saved?['shoes'] ?? local.equippedShoes,
+        equippedBomb: saved?['bomb'] ?? local.equippedBomb,
       );
       notifyListeners();
     } catch (_) {
@@ -116,6 +125,10 @@ class CharacterViewModel extends ChangeNotifier {
         suitStyle: _character!.suitStyle,
         skinColorValue: _character!.skinColorValue,
         suitColorValue: _character!.suitColorValue,
+        equippedMask: _character!.equippedMask,
+        equippedGloves: _character!.equippedGloves,
+        equippedShoes: _character!.equippedShoes,
+        equippedBomb: _character!.equippedBomb,
       );
       SharedPreferences.getInstance().then(
         (p) => p.setString('character_hat', hatName),
@@ -133,6 +146,10 @@ class CharacterViewModel extends ChangeNotifier {
     int? suitStyle,
     int? skinColorValue,
     int? suitColorValue,
+    String? mask,
+    String? gloves,
+    String? shoes,
+    String? bomb,
   }) {
     final current = _character;
     if (current == null) return;
@@ -149,6 +166,10 @@ class CharacterViewModel extends ChangeNotifier {
       suitStyle: suitStyle ?? current.suitStyle,
       skinColorValue: skinColorValue ?? current.skinColorValue,
       suitColorValue: suitColorValue ?? current.suitColorValue,
+      equippedMask: mask ?? current.equippedMask,
+      equippedGloves: gloves ?? current.equippedGloves,
+      equippedShoes: shoes ?? current.equippedShoes,
+      equippedBomb: bomb ?? current.equippedBomb,
     );
     SharedPreferences.getInstance().then((p) async {
       await p.setString('character_gender', _character!.gender);
@@ -165,27 +186,23 @@ class CharacterViewModel extends ChangeNotifier {
       await p.setInt('character_suit_style', _character!.suitStyle);
       await p.setInt('character_skin_color', _character!.skinColorValue);
       await p.setInt('character_suit_color', _character!.suitColorValue);
+      await p.setString('character_mask', _character!.equippedMask);
+      await p.setString('character_gloves', _character!.equippedGloves);
+      await p.setString('character_shoes', _character!.equippedShoes);
+      await p.setString('character_bomb', _character!.equippedBomb);
       await _apiService.saveCharacterCustomization(_character!);
     });
     notifyListeners();
   }
 
   bool purchaseNext(String category) {
-    final current = switch (category) {
-      'hat' => _hatUnlocked,
-      'suit' => _suitUnlocked,
-      _ => _accessoryUnlocked,
-    };
-    if (current >= 2 || _coins < 100) return false;
+    final current = unlockedFor(category);
+    if (current >= 49 || _coins < 100) return false;
     _coins -= 100;
-    if (category == 'hat') _hatUnlocked++;
-    if (category == 'suit') _suitUnlocked++;
-    if (category == 'accessory') _accessoryUnlocked++;
+    _unlocked[category] = current + 1;
     SharedPreferences.getInstance().then((p) async {
       await p.setInt('character_coins', _coins);
-      await p.setInt('hat_unlocked', _hatUnlocked);
-      await p.setInt('suit_unlocked', _suitUnlocked);
-      await p.setInt('accessory_unlocked', _accessoryUnlocked);
+      await p.setInt('${category}_unlocked', current + 1);
     });
     notifyListeners();
     return true;
@@ -209,6 +226,10 @@ class CharacterViewModel extends ChangeNotifier {
         suitStyle: _character!.suitStyle,
         skinColorValue: _character!.skinColorValue,
         suitColorValue: _character!.suitColorValue,
+        equippedMask: _character!.equippedMask,
+        equippedGloves: _character!.equippedGloves,
+        equippedShoes: _character!.equippedShoes,
+        equippedBomb: _character!.equippedBomb,
       );
     }
     SharedPreferences.getInstance().then((p) => p.setInt('character_coins', _coins));

@@ -69,6 +69,15 @@ public class User : AggregateRoot<Guid>
         token?.Revoke(replacedBy);
     }
 
+    public bool TryRotateRefreshToken(string currentHash, string replacementHash, DateTime expiresAt)
+    {
+        var current = _refreshTokens.FirstOrDefault(token => token.IsActive && token.MatchesHash(currentHash));
+        if (current is null) return false;
+        current.Revoke(replacementHash);
+        AddRefreshToken(replacementHash, expiresAt);
+        return true;
+    }
+
     public void Ban(string reason)
     {
         Status = UserStatus.Banned;
@@ -83,6 +92,8 @@ public class User : AggregateRoot<Guid>
     {
         Status = UserStatus.Suspended;
         UpdatedAt = DateTime.UtcNow;
+        foreach (var token in _refreshTokens.Where(t => t.IsActive))
+            token.Revoke();
     }
 
     public void Activate()

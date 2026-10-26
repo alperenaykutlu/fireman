@@ -1,17 +1,20 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../core/character/animated_character_painter.dart';
+import '../services/game_audio_service.dart';
+import '../core/character/animated_firefighter_widget.dart';
 import '../core/character/character_state.dart';
 import '../core/constants.dart';
 import '../models/user_profile.dart';
 import '../viewmodels/gameplay_viewmodel.dart';
-import '../services/api_service.dart';
-import 'connection_notice.dart';
+import '../viewmodels/character_viewmodel.dart';
 import 'character_screen.dart';
 import 'gameplay_screen.dart';
 import 'lobby_screen.dart';
-import '../widgets/menu_buttons.dart';
+import 'friends_screen.dart';
+import 'missions_screen.dart';
+import '../shared/widgets/menu_buttons.dart';
+import '../shared/widgets/fireman_card.dart';
 
 class MainMenuScreen extends StatefulWidget {
   final UserProfile profile;
@@ -31,6 +34,8 @@ class _MainMenuScreenState extends State<MainMenuScreen>
   @override
   void initState() {
     super.initState();
+    GameAudioService.instance.startGameMusic();
+    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<CharacterViewModel>().loadCharacter());
     // Karakterin nefes alma ve hafif sallanma (idle breathing & swaying) animasyonu
     _idleAnimController = AnimationController(
       vsync: this,
@@ -97,15 +102,11 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     return InkWell(
       onTap: () async {
         Navigator.pop(context);
-        final online = await context.read<ApiService>().checkInternetConnection();
-        if (!online) {
-          final shouldContinue = await confirmOfflinePlay(context, () => context.read<ApiService>().checkInternetConnection());
-          if (!shouldContinue || !mounted) return;
-        }
+        if (!mounted) return;
         context.read<GameplayViewModel>().setPlayerCount(count);
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const GameplayScreen()),
+          MaterialPageRoute(builder: (_) => GameplayScreen(isOnline: false, playerName: widget.profile.username, profile: widget.profile)),
         );
       },
       borderRadius: BorderRadius.circular(12),
@@ -139,41 +140,63 @@ class _MainMenuScreenState extends State<MainMenuScreen>
   }
 
   void _showSettingsDialog() {
+    var musicEnabled = true;
+    var vibrationEnabled = true;
     showDialog(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppConstants.bgCard,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('⚙️ Oyun Ayarları'),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: Text('Müzik & Ses Efektleri'),
-                trailing: Icon(Icons.volume_up, color: AppConstants.waterBlue),
-              ),
-              ListTile(
-                title: Text('Titreşim (Haptic)'),
-                trailing: Icon(Icons.vibration, color: AppConstants.waterCyan),
-              ),
-              ListTile(
-                title: Text('Grafik Kalitesi: Yüksek 60FPS'),
-                trailing: Icon(Icons.hd, color: AppConstants.gold),
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            backgroundColor: AppConstants.bgCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('⚙️ Oyun Ayarları'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SwitchListTile(
+                  title: const Text('Müzik ve ses efektleri'),
+                  value: musicEnabled,
+                  secondary: const Icon(Icons.volume_up, color: AppConstants.waterBlue),
+                  onChanged: (enabled) {
+                    setDialogState(() => musicEnabled = enabled);
+                    GameAudioService.instance.setMusicEnabled(enabled);
+                    GameAudioService.instance.setEffectsEnabled(enabled);
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Titreşim (Haptic)'),
+                  value: vibrationEnabled,
+                  secondary: const Icon(Icons.vibration, color: AppConstants.waterCyan),
+                  onChanged: (enabled) {
+                    setDialogState(() => vibrationEnabled = enabled);
+                    GameAudioService.instance.setVibrationEnabled(enabled);
+                  },
+                ),
+                const ListTile(
+                  title: Text('Grafik Kalitesi: Yüksek 60FPS'),
+                  trailing: Icon(Icons.hd, color: AppConstants.gold),
+                ),
+                const ListTile(
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                  dense: true,
+                  leading: Icon(Icons.notifications_active, color: AppConstants.gold),
+                  title: Text('Günlük oyun davetleri otomatik'),
+                  subtitle: Text('Her gün 12:30 ve 19:30 · Bildirim izni gerekir'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text(
+                  'Kapat',
+                  style: TextStyle(color: Colors.white70),
+                ),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                'Kapat',
-                style: TextStyle(color: Colors.white70),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -422,297 +445,131 @@ class _MainMenuScreenState extends State<MainMenuScreen>
 
   @override
   Widget build(BuildContext context) {
-    final compactLandscape = MediaQuery.sizeOf(context).height < 430;
-    return Scaffold(
-      backgroundColor: AppConstants.bgDark,
-      body: SafeArea(
-        child: Column(
+    final compact = MediaQuery.sizeOf(context).height < 430;
+    final destinations = const [
+      (label: 'Oyna', icon: Icons.sports_esports_outlined, active: Icons.sports_esports),
+      (label: 'İstatistik', icon: Icons.bar_chart_outlined, active: Icons.bar_chart),
+      (label: 'Atölye', icon: Icons.checkroom_outlined, active: Icons.checkroom),
+      (label: 'Görevler', icon: Icons.task_alt_outlined, active: Icons.task_alt),
+      (label: 'Arkadaşlar', icon: Icons.people_alt_outlined, active: Icons.people_alt),
+      (label: 'Odalar', icon: Icons.public_outlined, active: Icons.public),
+    ];
+    return DefaultTabController(
+      length: 6,
+      child: Scaffold(
+        backgroundColor: AppConstants.bgDark,
+        body: SafeArea(
+          child: Builder(builder: (context) {
+            final controller = DefaultTabController.of(context);
+            return Padding(
+            padding: EdgeInsets.fromLTRB(compact ? 7 : 12, compact ? 6 : 10, compact ? 7 : 12, compact ? 6 : 10),
+            child: Row(children: [
+              Container(
+                width: compact ? 68 : 82,
+                decoration: BoxDecoration(color: const Color(0xFF151F2D), borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.white.withValues(alpha: .06))),
+                child: Column(children: [
+                  Padding(padding: EdgeInsets.symmetric(vertical: compact ? 6 : 11), child: Container(width: 36, height: 36, decoration: BoxDecoration(color: AppConstants.fireOrange.withValues(alpha: .16), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.local_fire_department, color: AppConstants.fireOrange))),
+                  Expanded(child: AnimatedBuilder(animation: controller, builder: (context, _) => ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: destinations.length,
+                    itemBuilder: (context, index) {
+                      final item = destinations[index];
+                      final selected = controller.index == index;
+                      return Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), child: Tooltip(message: item.label, child: InkWell(
+                        onTap: () => controller.animateTo(index, duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic),
+                        borderRadius: BorderRadius.circular(14),
+                        child: AnimatedContainer(duration: const Duration(milliseconds: 180), height: compact ? 42 : 50, decoration: BoxDecoration(color: selected ? AppConstants.fireOrange.withValues(alpha: .17) : Colors.transparent, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? AppConstants.fireOrange.withValues(alpha: .42) : Colors.transparent)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(selected ? item.active : item.icon, size: compact ? 17 : 19, color: selected ? AppConstants.fireOrange : Colors.white54), if (!compact) ...[const SizedBox(height: 2), Text(item.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 8, fontWeight: selected ? FontWeight.w800 : FontWeight.w500, color: selected ? Colors.white : Colors.white54))]])),
+                      )));
+                    },
+                  ))),
+                  IconButton(tooltip: 'Ayarlar', visualDensity: VisualDensity.compact, onPressed: _showSettingsDialog, icon: const Icon(Icons.settings_outlined, size: 19, color: Colors.white70)),
+                ]),
+              ),
+              SizedBox(width: compact ? 8 : 13),
+              Expanded(child: Column(children: [
+                Container(height: compact ? 34 : 42, padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 16), decoration: BoxDecoration(color: const Color(0xFF151F2D), borderRadius: BorderRadius.circular(14)), child: Row(children: [
+                  Expanded(child: Text(widget.profile.username, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w900, fontSize: compact ? 12 : 14))),
+                  const Icon(Icons.emoji_events_outlined, color: AppConstants.gold, size: 16), const SizedBox(width: 5), Text('${widget.profile.totalScore} PUAN', style: const TextStyle(fontWeight: FontWeight.bold, color: AppConstants.gold, fontSize: 11)),
+                  const SizedBox(width: 12),
+                  Consumer<CharacterViewModel>(builder: (context, characterVm, _) => Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.monetization_on_outlined, color: Color(0xFFFFC857), size: 16),
+                    const SizedBox(width: 4),
+                    Text('${characterVm.coins} 🪙', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFFFD166), fontSize: 11)),
+                  ])),
+                ])),
+                SizedBox(height: compact ? 5 : 9),
+                Expanded(child: TabBarView(children: [
+                  _buildPlayPage(compact),
+                  _buildStatisticsPage(compact),
+                  CharacterScreen(username: widget.profile.username, embedded: true),
+                  const MissionsScreen(),
+                  const FriendsScreen(),
+                  const LobbyScreen(),
+                ])),
+              ])),
+            ]),
+          );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayPage(bool compact) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 10 : 18),
+        child: Row(
           children: [
-            // ÜST BAŞLIK & PROFİL ADI
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: compactLandscape ? 5 : 14,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Text('🔥 ', style: TextStyle(fontSize: 24)),
-                      Text(
-                        widget.profile.username,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppConstants.bgCard,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppConstants.borderCard),
-                    ),
-                    child: const Text(
-                      'ONLINE 🟢',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: AppConstants.waterCyan,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ORTA ALAN: SOLDA İSTATİSTİKLER, SAĞDA NEFES ALAN VE SALLANAN KARAKTER
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
+              flex: 5,
+              child: FiremanCard(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // SOL TARAF: OYUNCU İSTATİSTİKLERİ
-                    Expanded(
-                      flex: 5,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppConstants.bgCard,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppConstants.borderCard),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.bar_chart,
-                                  color: AppConstants.fireOrange,
-                                  size: 20,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'İSTATİSTİKLER',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Divider(color: AppConstants.borderCard),
-                            _buildStatItem(
-                              'Kazanılan Puan',
-                              '${widget.profile.totalScore} 🪙',
-                              AppConstants.gold,
-                            ),
-                            _buildStatItem(
-                              'Oynanan Oyun',
-                              '${widget.profile.gamesPlayed}',
-                              Colors.white,
-                            ),
-                            _buildStatItem(
-                              'Kazanılan Oyun',
-                              '${widget.profile.gamesWon}',
-                              AppConstants.waterCyan,
-                            ),
-                            _buildStatItem(
-                              'Mevcut Sıralama',
-                              '#${widget.profile.rank}',
-                              AppConstants.fireOrange,
-                            ),
-                          ],
-                        ),
+                    AnimatedBuilder(
+                      animation: _idleAnimController,
+                      builder: (context, child) => Transform.translate(
+                        offset: Offset(0, sin(_idleAnimController.value * pi) * 5),
+                        child: Transform.rotate(angle: _swayAnim.value, child: Transform.scale(scale: _breathAnim.value, child: child)),
                       ),
+                      child: Consumer<CharacterViewModel>(builder: (context, characterVm, _) {
+                        final character = characterVm.character;
+                        if (character == null) return AnimatedFirefighterWidget(size: compact ? 92 : 150, state: CharacterAnimState.idle);
+                        return AnimatedFirefighterWidget(size: compact ? 92 : 150, state: CharacterAnimState.idle,
+                          isFemale: character.gender == 'female', hatStyle: character.hatStyle,
+                          accessoryStyle: character.equippedAccessory.contains('telsizi') ? 1 : character.equippedAccessory.contains('tüp') ? 2 : 0,
+                          suitStyle: character.suitStyle,
+                          maskStyle: character.equippedMask.toLowerCase().contains('standart') ? -1 : 0,
+                          suitColor: Color(character.suitColorValue), skinColor: Color(character.skinColorValue));
+                      }),
                     ),
-
-                    const SizedBox(width: 14),
-
-                    // SAĞ TARAF: NEFES ALAN VE SALLANAN KARAKTER (ANIMATED IDLE CHARACTER)
-                    Expanded(
-                      flex: 5,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppConstants.bgCard,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppConstants.borderCard),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Canlı Salınım & Nefes Animasyonu
-                            AnimatedBuilder(
-                              animation: _idleAnimController,
-                              builder: (context, child) {
-                                return Transform.translate(
-                                  offset: Offset(
-                                    0,
-                                    sin(_idleAnimController.value * pi) * 6,
-                                  ), // Dikey nefes alma
-                                  child: Transform.rotate(
-                                    angle: _swayAnim
-                                        .value, // Hafif sağa sola sallanma
-                                    child: Transform.scale(
-                                      scale: _breathAnim.value,
-                                      child: child,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                width: compactLandscape ? 76 : 120,
-                                height: compactLandscape ? 84 : 140,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppConstants.waterBlue.withValues(
-                                        alpha: 0.25,
-                                      ),
-                                      blurRadius: 20,
-                                      spreadRadius: 6,
-                                    ),
-                                  ],
-                                ),
-                                child: AnimatedFirefighterWidget(
-                                  size: compactLandscape ? 76 : 120,
-                                  state: CharacterAnimState.idle,
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: compactLandscape ? 3 : 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppConstants.bgDark,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: AppConstants.borderCard,
-                                ),
-                              ),
-                              child: const Text(
-                                'Kıdemli İtfaiyeci',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 8),
+                    Text(widget.profile.username, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                    const SizedBox(height: 5),
+                    const Text('Kıdemli İtfaiyeci', style: TextStyle(color: Colors.white60)),
                   ],
                 ),
               ),
             ),
-
-            SizedBox(height: compactLandscape ? 6 : 16),
-
-            // ALT BÖLÜM: 6 SEÇENEK BUTONLARI (TEK OYNA, ONLİNE OYNA, TABLO, DÜZENLE, AYARLAR, ÇIKIŞ)
-            Container(
-              padding: EdgeInsets.all(compactLandscape ? 7 : 16),
-              decoration: const BoxDecoration(
-                color: AppConstants.bgCard,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+            SizedBox(width: compact ? 10 : 18),
+            Expanded(
+              flex: 6,
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Üst Sıra: Ana Oyun Modları (Tek Oyna, Online Oyna)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FiremanMenuButton(
-                          title: 'TEK OYNA',
-                          subtitle: '2, 3 veya 4 Kişilik',
-                          icon: Icons.sports_esports,
-                          gradient: const [
-                            Color(0xFFFF5722),
-                            Color(0xFFFF9800),
-                          ],
-                          onTap: _showOfflinePlayerCountDialog,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FiremanMenuButton(
-                          title: 'ONLINE OYNA',
-                          subtitle: '4 Kişilik Eşleşme',
-                          icon: Icons.public,
-                          gradient: const [
-                            Color(0xFF0070F3),
-                            Color(0xFF00C6FF),
-                          ],
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const LobbyScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                  FiremanMenuButton(
+                    title: 'TEK OYNA', subtitle: 'Botlara karşı 2–4 oyuncu',
+                    icon: Icons.local_fire_department,
+                    gradient: const [Color(0xFFFF5722), Color(0xFFFF9800)],
+                    onTap: _showOfflinePlayerCountDialog,
                   ),
-                  SizedBox(height: compactLandscape ? 5 : 10),
-                  // Alt Sıra: Yardımcı Seçenekler (Tablo, Düzenle, Ayarlar, Çıkış)
-                  Row(
-                    children: [
-                      FiremanMiniButton(
-                        icon: Icons.leaderboard,
-                        label: 'Tablo',
-                        onTap: _showLeaderboardDialog,
-                      ),
-                      const SizedBox(width: 8),
-                      FiremanMiniButton(
-                        icon: Icons.checkroom,
-                        label: 'Düzenle',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CharacterScreen(username: widget.profile.username),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FiremanMiniButton(
-                        icon: Icons.settings,
-                        label: 'Ayarlar',
-                        onTap: _showSettingsDialog,
-                      ),
-                      const SizedBox(width: 8),
-                      FiremanMiniButton(
-                        icon: Icons.exit_to_app,
-                        label: 'Çıkış',
-                        color: Colors.redAccent,
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Oyundan çıkılıyor...'),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                  SizedBox(height: compact ? 8 : 14),
+                  FiremanMenuButton(
+                    title: 'ONLINE OYNA', subtitle: 'Arkadaşlarınla eşleş',
+                    icon: Icons.public,
+                    gradient: const [Color(0xFF0070F3), Color(0xFF00C6FF)],
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LobbyScreen())),
                   ),
                 ],
               ),
@@ -723,24 +580,53 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  Widget _buildStatItem(String title, String value, Color valueColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 11, color: Colors.white54),
+  Widget _buildStatisticsPage(bool compact) {
+    final stats = [
+      ('Kazanılan puan', '${widget.profile.totalScore}', AppConstants.gold),
+      ('Oynanan oyun', '${widget.profile.gamesPlayed}', Colors.white),
+      ('Kazanılan oyun', '${widget.profile.gamesWon}', AppConstants.waterCyan),
+      ('Sıralama', '#${widget.profile.rank}', AppConstants.fireOrange),
+    ];
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 10 : 18),
+        child: Column(
+          children: [
+            Expanded(
+              child: GridView.builder(
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: compact ? 4 : 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: compact ? 1.9 : 2.4,
+                ),
+                itemCount: stats.length,
+                itemBuilder: (context, index) {
+                  final stat = stats[index];
+                  return FiremanCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(stat.$1, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Text(stat.$2, style: TextStyle(color: stat.$3, fontWeight: FontWeight.w900, fontSize: 19)),
+                    ]),
+                  );
+                },
+              ),
+            ),
+            Row(children: [
+              FiremanMiniButton(icon: Icons.emoji_events, label: 'Tablo', color: AppConstants.gold, onTap: _showLeaderboardDialog),
+              const SizedBox(width: 10),
+              FiremanMiniButton(icon: Icons.settings, label: 'Ayarlar', onTap: _showSettingsDialog),
+              const SizedBox(width: 10),
+              FiremanMiniButton(icon: Icons.exit_to_app, label: 'Çıkış', color: Colors.redAccent, onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Oyundan çıkılıyor...')));
+              }),
+            ]),
+          ],
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: valueColor,
-          ),
-        ),
-      ],
+      ),
     );
   }
 

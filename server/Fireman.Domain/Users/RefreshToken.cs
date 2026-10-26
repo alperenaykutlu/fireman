@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Fireman.Domain.Users;
 
 public class RefreshToken
@@ -11,6 +14,13 @@ public class RefreshToken
     public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
     public bool IsRevoked => RevokedAt is not null;
     public bool IsActive => !IsRevoked && !IsExpired;
+
+    public bool MatchesHash(string candidateHash)
+    {
+        var expected = Encoding.UTF8.GetBytes(TokenHash);
+        var candidate = Encoding.UTF8.GetBytes(candidateHash);
+        return expected.Length == candidate.Length && CryptographicOperations.FixedTimeEquals(expected, candidate);
+    }
 
     public RefreshToken(string tokenHash, DateTime expiresAt)
     {

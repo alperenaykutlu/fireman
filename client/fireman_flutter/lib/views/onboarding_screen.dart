@@ -1,14 +1,15 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import '../core/character/animated_character_painter.dart';
+import '../core/character/animated_firefighter_widget.dart';
 import '../core/character/character_state.dart';
-import '../core/particles/game_particles.dart';
+import '../core/particles/ambient_ember_overlay.dart';
 import '../core/responsive/responsive_layout.dart';
 import '../models/user_profile.dart';
 import 'main_menu_screen.dart';
-import '../widgets/power_up_card.dart';
+import '../shared/widgets/power_up_card.dart';
+import 'city_skyline_painter.dart';
+import 'username_entry_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -80,8 +81,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final compactLandscape = MediaQuery.sizeOf(context).height < 430;
+    final screenSize = MediaQuery.sizeOf(context);
+    final compactLandscape = screenSize.height < 520 || screenSize.width < 640;
     return Scaffold(
+      // The separate username route owns the keyboard resize; keep this route
+      // laid out at full height underneath it to avoid a 50px Flex constraint.
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFF090D14),
       body: Stack(
         children: [
@@ -99,6 +104,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
           // 3. KATMAN: Responsive İçerik ve PageView
           ResponsiveLayout(
+            customPadding: EdgeInsets.symmetric(
+              horizontal: screenSize.width < 720 ? 8 : 20,
+              vertical: compactLandscape ? 4 : 12,
+            ),
             child: Column(
               children: [
                 // Üst Bar: Başlık & Hızlı Atla Butonu
@@ -471,184 +480,4 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
     );
   }
-}
-
-/// Katmanlı Şehir ve Gökyüzü Ressamı (Parallax Skyline)
-class CinematicCitySkylinePainter extends CustomPainter {
-  final double pageOffset;
-
-  CinematicCitySkylinePainter({required this.pageOffset});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // 1. Gökyüzü Gradyanı
-    final skyPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0xFF030712),
-          Color(0xFF0F172A),
-          Color(0xFF1E1B4B),
-          Color(0xFF311018), // Yangın kızıllığı
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), skyPaint);
-
-    // Ay ve Kızıl Hale
-    final moonCenter = Offset(
-      size.width * 0.82 - (pageOffset * 20),
-      size.height * 0.16,
-    );
-    final glowPaint = Paint()
-      ..color = const Color(0xFFFDE047).withAlpha(40)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
-    canvas.drawCircle(moonCenter, 32, glowPaint);
-    canvas.drawCircle(moonCenter, 18, Paint()..color = const Color(0xFFFEF08A));
-
-    // 2. Uzak Şehir Silueti (Parallax Hızı: 0.3)
-    final distantBuildingPaint = Paint()..color = const Color(0xFF0D1322);
-    _drawBuildings(
-      canvas,
-      size,
-      baseY: size.height * 0.65,
-      step: 38,
-      heightSeed: 85,
-      offset: pageOffset * 25,
-      paint: distantBuildingPaint,
-    );
-
-    // 3. Yakın Şehir Silueti (Parallax Hızı: 0.6)
-    final nearBuildingPaint = Paint()..color = const Color(0xFF090E18);
-    _drawBuildings(
-      canvas,
-      size,
-      baseY: size.height * 0.76,
-      step: 48,
-      heightSeed: 130,
-      offset: pageOffset * 50,
-      paint: nearBuildingPaint,
-    );
-
-    // Zemin ve Islak Sokak Işıltısı
-    final groundPaint = Paint()..color = const Color(0xFF05070B);
-    canvas.drawRect(
-      Rect.fromLTWH(0, size.height * 0.88, size.width, size.height * 0.12),
-      groundPaint,
-    );
-
-    final lineGlow = Paint()
-      ..shader = LinearGradient(
-        colors: [
-          Colors.transparent,
-          const Color(0xFFFF5722).withAlpha(120),
-          const Color(0xFFFFC107).withAlpha(120),
-          Colors.transparent,
-        ],
-      ).createShader(Rect.fromLTWH(0, size.height * 0.88, size.width, 3));
-    canvas.drawRect(
-      Rect.fromLTWH(0, size.height * 0.88, size.width, 2.5),
-      lineGlow,
-    );
-  }
-
-  void _drawBuildings(
-    Canvas canvas,
-    Size size, {
-    required double baseY,
-    required double step,
-    required double heightSeed,
-    required double offset,
-    required Paint paint,
-  }) {
-    for (double x = -offset % step - step; x < size.width + step; x += step) {
-      final h = (sin(x * 0.12).abs() * heightSeed) + 40;
-      canvas.drawRect(Rect.fromLTWH(x, baseY - h, step * 0.92, h + 150), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CinematicCitySkylinePainter oldDelegate) =>
-      oldDelegate.pageOffset != pageOffset;
-}
-
-class UsernameEntryScreen extends StatefulWidget {
-  const UsernameEntryScreen({super.key});
-
-  @override
-  State<UsernameEntryScreen> createState() => _UsernameEntryScreenState();
-}
-
-class _UsernameEntryScreenState extends State<UsernameEntryScreen> {
-  final _controller = TextEditingController();
-  String? _error;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _continue() {
-    final username = _controller.text.trim();
-    if (username.isEmpty) {
-      setState(() => _error = 'Devam etmek için bir oyuncu adı yaz.');
-      return;
-    }
-    Navigator.of(context).pop(username);
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    resizeToAvoidBottomInset: true,
-    backgroundColor: const Color(0xFF090D14),
-    body: SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          padding: const EdgeInsets.all(18),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight - 36),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.local_fire_department, color: Color(0xFFFF7A36), size: 44),
-                    const SizedBox(height: 8),
-                    const Text('OYUNCU ADINI BELİRLE', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 1)),
-                    const SizedBox(height: 6),
-                    const Text('Bu ad oyun içindeki profilinde görünecek.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      maxLength: 18,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.done,
-                      scrollPadding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom + 28),
-                      onChanged: (_) { if (_error != null) setState(() => _error = null); },
-                      onSubmitted: (_) => _continue(),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Oyuncu adı',
-                        errorText: _error,
-                        filled: true,
-                        fillColor: const Color(0xFF172033),
-                        prefixIcon: const Icon(Icons.person_outline, color: Colors.amberAccent),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _continue, icon: const Icon(Icons.arrow_forward), label: const Text('OYUNA DEVAM ET'))),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }

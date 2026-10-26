@@ -1,66 +1,48 @@
+using Fireman.Application.Common.Interfaces;
 using Fireman.Domain.Social;
 
 namespace Fireman.Infrastructure.Persistence.Repositories;
 
-public class FriendshipRepository : IFriendshipRepository
+public sealed class FriendshipRepository(IDocumentDatabase database) : IFriendshipRepository
 {
-    private readonly List<Friendship> _friendships = new();
-
-    public Task<IReadOnlyList<Friendship>> GetUserFriendshipsAsync(Guid userId, CancellationToken cancellationToken = default)
+    private const string Collection = "friendships";
+    public async Task<IReadOnlyList<Friendship>> GetUserFriendshipsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        lock (_friendships)
-        {
-            var list = _friendships.Where(f => f.UserId == userId || f.FriendUserId == userId).ToList();
-            return Task.FromResult<IReadOnlyList<Friendship>>(list);
-        }
+        var userFilter = new Dictionary<string, string> { ["userId"] = userId.ToString() };
+        var friendFilter = new Dictionary<string, string> { ["friendUserId"] = userId.ToString() };
+        var own = await database.FindAsync<Friendship>(Collection, userFilter, cancellationToken);
+        var received = await database.FindAsync<Friendship>(Collection, friendFilter, cancellationToken);
+        return own.Concat(received).DistinctBy(friendship => friendship.Id).ToList();
     }
-
-    public Task<Friendship?> GetBetweenUsersAsync(Guid userA, Guid userB, CancellationToken cancellationToken = default)
+    public async Task<Friendship?> GetBetweenUsersAsync(Guid userA, Guid userB, CancellationToken cancellationToken = default) =>
+        await FindBetweenAsync(userA, userB, cancellationToken);
+    private async Task<Friendship?> FindBetweenAsync(Guid userA, Guid userB, CancellationToken cancellationToken)
     {
-        lock (_friendships)
-        {
-            var found = _friendships.FirstOrDefault(f =>
-                (f.UserId == userA && f.FriendUserId == userB) ||
-                (f.UserId == userB && f.FriendUserId == userA));
-            return Task.FromResult(found);
-        }
+        var outgoing = await database.FindAsync<Friendship>(Collection, new Dictionary<string, string> { ["userId"] = userA.ToString(), ["friendUserId"] = userB.ToString() }, cancellationToken);
+        if (outgoing.Count > 0) return outgoing[0];
+        var incoming = await database.FindAsync<Friendship>(Collection, new Dictionary<string, string> { ["userId"] = userB.ToString(), ["friendUserId"] = userA.ToString() }, cancellationToken);
+        return incoming.FirstOrDefault();
     }
-
-    public Task AddAsync(Friendship friendship, CancellationToken cancellationToken = default)
-    {
-        lock (_friendships)
-        {
-            _friendships.Add(friendship);
-        }
-        return Task.CompletedTask;
-    }
-
-    public Task UpdateAsync(Friendship friendship, CancellationToken cancellationToken = default)
-    {
-        // Reference is updated in memory
-        return Task.CompletedTask;
-    }
+    public Task AddAsync(Friendship friendship, CancellationToken cancellationToken = default) => database.SetAsync(Collection, friendship.Id.ToString(), friendship, cancellationToken);
+    public Task UpdateAsync(Friendship friendship, CancellationToken cancellationToken = default) => database.SetAsync(Collection, friendship.Id.ToString(), friendship, cancellationToken);
 }
 
-public class PlayerReportRepository : IPlayerReportRepository
+public sealed class DirectMessageRepository(IDocumentDatabase database) : IDirectMessageRepository
 {
-    private readonly List<PlayerReport> _reports = new();
-
-    public Task AddAsync(PlayerReport report, CancellationToken cancellationToken = default)
+    private const string Collection = "directMessages";
+    public async Task<IReadOnlyList<DirectMessage>> GetConversationAsync(Guid userA, Guid userB, CancellationToken cancellationToken = default)
     {
-        lock (_reports)
-        {
-            _reports.Add(report);
-        }
-        return Task.CompletedTask;
+        var sent = await database.FindAsync<DirectMessage>(Collection, new Dictionary<string, string> { ["senderUserId"] = userA.ToString(), ["recipientUserId"] = userB.ToString() }, cancellationToken);
+        var received = await database.FindAsync<DirectMessage>(Collection, new Dictionary<string, string> { ["senderUserId"] = userB.ToString(), ["recipientUserId"] = userA.ToString() }, cancellationToken);
+        return sent.Concat(received).OrderBy(m => m.CreatedAt).TakeLast(100).ToList();
     }
+    public Task AddAsync(DirectMessage message, CancellationToken cancellationToken = default) => database.SetAsync(Collection, message.Id.ToString(), message, cancellationToken);
+}
 
-    public Task<IReadOnlyList<PlayerReport>> GetReportsForUserAsync(Guid reportedUserId, CancellationToken cancellationToken = default)
-    {
-        lock (_reports)
-        {
-            var list = _reports.Where(r => r.ReportedUserId == reportedUserId).ToList();
-            return Task.FromResult<IReadOnlyList<PlayerReport>>(list);
-        }
-    }
+public sealed class PlayerReportRepository(IDocumentDatabase database) : IPlayerReportRepository
+{
+    private const string Collection = "playerReports";
+    public Task AddAsync(PlayerReport report, CancellationToken cancellationToken = default) => database.SetAsync(Collection, report.Id.ToString(), report, cancellationToken);
+    public async Task<IReadOnlyList<PlayerReport>> GetReportsForUserAsync(Guid reportedUserId, CancellationToken cancellationToken = default) =>
+        await database.FindAsync<PlayerReport>(Collection, new Dictionary<string, string> { ["reportedUserId"] = reportedUserId.ToString() }, cancellationToken);
 }

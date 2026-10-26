@@ -94,7 +94,7 @@ public sealed class MatchSimulation : ITickSource
                 Id = i + 1,
                 Name = $"Player {i + 1}",
                 Position = FixedPos.FromTile(spawn.X, spawn.Y),
-                Health = 1,
+                Health = 100,
                 BombCapacity = 1,
                 BombRange = 1,
                 MoveSpeedSubUnitsPerTick = 8,
@@ -266,7 +266,7 @@ public sealed class MatchSimulation : ITickSource
             }
 
             _events.Add(new SimEvent(SimEventType.BombExploded, bomb.OwnerPlayerId, bomb.TileX, bomb.TileY, bomb.Id));
-            AddFlameTile(bomb.TileX, bomb.TileY);
+            AddFlameTile(bomb.TileX, bomb.TileY, bomb.OwnerPlayerId);
 
             // 4 directions: Up, Down, Left, Right
             ReadOnlySpan<(int dx, int dy)> directions = [(0, -1), (0, 1), (-1, 0), (1, 0)];
@@ -292,8 +292,9 @@ public sealed class MatchSimulation : ITickSource
                     {
                         // Destroys barrel, flame stops here
                         _state.SetTile(targetX, targetY, TileType.Empty);
+                        if (owner != null) owner.Score += 100;
                         _events.Add(new SimEvent(SimEventType.BarrelDestroyed, bomb.OwnerPlayerId, targetX, targetY));
-                        AddFlameTile(targetX, targetY);
+                        AddFlameTile(targetX, targetY, bomb.OwnerPlayerId);
 
                         // Chance to drop power-up
                         if (_rng.Next(100) < _config.BarrelDropRatePercent)
@@ -320,13 +321,13 @@ public sealed class MatchSimulation : ITickSource
                         explodingBombsQueue.Enqueue(chainedBomb);
                     }
 
-                    AddFlameTile(targetX, targetY);
+                    AddFlameTile(targetX, targetY, bomb.OwnerPlayerId);
                 }
             }
         }
     }
 
-    private void AddFlameTile(int x, int y)
+    private void AddFlameTile(int x, int y, int ownerPlayerId)
     {
         var existing = _state.Flames.FirstOrDefault(f => f.TileX == x && f.TileY == y);
         if (existing != null)
@@ -339,7 +340,8 @@ public sealed class MatchSimulation : ITickSource
             {
                 TileX = x,
                 TileY = y,
-                RemainingTicks = _config.FlameDurationTicks
+                RemainingTicks = _config.FlameDurationTicks,
+                OwnerPlayerId = ownerPlayerId
             });
         }
 
@@ -365,7 +367,10 @@ public sealed class MatchSimulation : ITickSource
             {
                 if (player.Position.TileX == flame.TileX && player.Position.TileY == flame.TileY)
                 {
-                    player.Health--;
+                    if (!flame.DamagedPlayerIds.Add(player.Id)) continue;
+                    player.Health = Math.Max(0, player.Health - 25);
+                    var attacker = _state.Players.FirstOrDefault(p => p.Id == flame.OwnerPlayerId);
+                    if (attacker != null && attacker.Id != player.Id) attacker.Score += 1000;
                     _events.Add(new SimEvent(SimEventType.PlayerDamaged, player.Id, flame.TileX, flame.TileY, player.Health));
 
                     if (player.Health <= 0)
@@ -403,9 +408,10 @@ public sealed class MatchSimulation : ITickSource
                         player.BombCapacity++;
                         break;
                     case PowerUpType.Heal:
-                        player.Health++;
+                        player.Health = Math.Min(100, player.Health + 10);
                         break;
                 }
+                player.Score += 500;
 
                 _events.Add(new SimEvent(SimEventType.PowerUpCollected, player.Id, pup.TileX, pup.TileY, (int)pup.Type));
                 _state.PowerUps.RemoveAt(i);

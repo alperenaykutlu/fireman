@@ -20,11 +20,13 @@ public record MatchDto(
     List<MatchPlayerDto> Players,
     DateTime CreatedAt,
     DateTime? StartedAt,
-    DateTime? FinishedAt
+    DateTime? FinishedAt,
+    string RoomName,
+    bool HasPassword
 );
 
-public record CreateMatchRequest(MatchType Type, int MaxPlayers);
+public record CreateMatchRequest(MatchType Type, int MaxPlayers, string RoomName = "", string? Password = null);
 
-public record JoinMatchRequest(Guid MatchId);
+public record JoinMatchRequest(Guid MatchId, string? Password = null);
 
 public record SubmitMatchScoreRequest(Guid MatchId, int Score, int Rescues);

@@ -67,6 +67,20 @@ public class PlayerReport : Entity<Guid>
     }
 }
 
+public class DirectMessage : Entity<Guid>
+{
+    public Guid SenderUserId { get; private set; }
+    public Guid RecipientUserId { get; private set; }
+    public string SenderUsername { get; private set; } = string.Empty;
+    public string Body { get; private set; } = string.Empty;
+    private DirectMessage() { }
+    public DirectMessage(Guid senderId, Guid recipientId, string senderUsername, string body)
+    {
+        Id = Guid.NewGuid(); SenderUserId = senderId; RecipientUserId = recipientId;
+        SenderUsername = senderUsername; Body = body.Trim(); CreatedAt = DateTime.UtcNow;
+    }
+}
+
 public interface IFriendshipRepository
 {
     Task<IReadOnlyList<Friendship>> GetUserFriendshipsAsync(Guid userId, CancellationToken cancellationToken = default);
@@ -79,4 +93,10 @@ public interface IPlayerReportRepository
 {
     Task AddAsync(PlayerReport report, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PlayerReport>> GetReportsForUserAsync(Guid reportedUserId, CancellationToken cancellationToken = default);
+}
+
+public interface IDirectMessageRepository
+{
+    Task<IReadOnlyList<DirectMessage>> GetConversationAsync(Guid userA, Guid userB, CancellationToken cancellationToken = default);
+    Task AddAsync(DirectMessage message, CancellationToken cancellationToken = default);
 }

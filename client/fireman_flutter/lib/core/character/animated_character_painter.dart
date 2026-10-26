@@ -13,11 +13,14 @@ class FirefighterCharacterPainter extends CustomPainter {
   final Color helmetColor;
   final bool showShadow;
   final bool showHose;
+  final bool showBombGlove;
   final bool isFemale;
   final Color accessoryColor;
   final Color skinColor;
   final int hatStyle;
   final int accessoryStyle;
+  final int maskStyle;
+  final int suitStyle;
 
   // Performans: Statik önbelleklenmiş Paint nesneleri
   static final Paint _shadowPaint = Paint()..color = const Color(0x55000000);
@@ -52,11 +55,14 @@ class FirefighterCharacterPainter extends CustomPainter {
     this.helmetColor = const Color(0xFFFBBF24), // İtfaiye altın/sarısı
     this.showShadow = true,
     this.showHose = true,
+    this.showBombGlove = false,
     this.isFemale = false,
     this.accessoryColor = const Color(0xFF38BDF8),
     this.skinColor = const Color(0xFFFFD1A4),
     this.hatStyle = 0,
     this.accessoryStyle = 0,
+    this.maskStyle = -1,
+    this.suitStyle = 0,
   });
 
   @override
@@ -168,6 +174,12 @@ class FirefighterCharacterPainter extends CustomPainter {
       const Radius.circular(8),
     );
     canvas.drawRRect(torsoRect, suitPaint);
+    if (suitStyle % 3 == 1) {
+      canvas.drawRect(Rect.fromLTWH(-14, torsoCenterY - 10, 4, 23), _stripePaint);
+      canvas.drawRect(Rect.fromLTWH(10, torsoCenterY - 10, 4, 23), _stripePaint);
+    } else if (suitStyle % 3 == 2) {
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-5, torsoCenterY - 15, 10, 12), const Radius.circular(3)), Paint()..color = accessoryColor);
+    }
 
     if (accessoryStyle == 1) {
       canvas.drawRRect(
@@ -256,6 +268,21 @@ class FirefighterCharacterPainter extends CustomPainter {
       suitPaint,
       isLeft: false,
     );
+
+    if (showBombGlove) {
+      // Picked-up bomb glove is shown as a small held item on the right hand.
+      final hand = Offset(18, torsoCenterY + 9);
+      canvas.drawCircle(hand, 7, Paint()..color = const Color(0xFF14B8A6));
+      canvas.drawCircle(hand, 4.5, Paint()..color = const Color(0xFF0F172A));
+      canvas.drawLine(
+        hand.translate(3, -5),
+        hand.translate(7, -9),
+        Paint()
+          ..color = Colors.amberAccent
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round,
+      );
+    }
 
     // 5. Su Hortumu ve Püskürtme (Aksiyon durumunda)
     if (showHose && state == CharacterAnimState.action) {
@@ -354,21 +381,19 @@ class FirefighterCharacterPainter extends CustomPainter {
       );
     }
     canvas.drawPath(mouthPath, _mouthPaint);
+    if (maskStyle >= 0) {
+      final maskPaint = Paint()..color = Color.lerp(accessoryColor, Colors.white, (maskStyle % 5) * .08)!;
+      canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-9, 3, 18, 9), const Radius.circular(4)), maskPaint);
+      final strapPaint = Paint()..color = Colors.white70..strokeWidth = 1.2;
+      canvas.drawLine(const Offset(-8, 5), const Offset(-13, 2), strapPaint);
+      canvas.drawLine(const Offset(8, 5), const Offset(13, 2), strapPaint);
+    }
 
     // 7. İtfaiyeci Kaskı (Görsel Derinlikli, Siperlikli ve Bröveli)
     final helmetPaint = Paint()
       ..color = hatStyle == 1 ? accessoryColor : helmetColor;
     final helmetBackPaint = Paint()
       ..color = Color.lerp(helmetColor, Colors.black, 0.25)!;
-
-    // Kask Arka Etekliği (Ense koruyucu siper)
-    canvas.drawArc(
-      Rect.fromCenter(center: const Offset(0, 4), width: 34, height: 26),
-      0,
-      pi,
-      true,
-      helmetBackPaint,
-    );
 
     // Kask Kubbesi
     if (hatStyle != 2) {
@@ -496,90 +521,12 @@ class FirefighterCharacterPainter extends CustomPainter {
         oldDelegate.state != state ||
         oldDelegate.direction != direction ||
         oldDelegate.suitColor != suitColor ||
-        oldDelegate.helmetColor != helmetColor;
-  }
-}
-
-/// Kolay kullanım için animasyonlu Stateful İtfaiyeci Widget'ı
-class AnimatedFirefighterWidget extends StatefulWidget {
-  final double size;
-  final CharacterAnimState state;
-  final CharacterDirection direction;
-  final Color suitColor;
-  final Color helmetColor;
-  final bool showShadow;
-  final bool showHose;
-  final bool isFemale;
-  final Color accessoryColor;
-  final Color skinColor;
-  final int hatStyle;
-  final int accessoryStyle;
-
-  const AnimatedFirefighterWidget({
-    super.key,
-    this.size = 120,
-    this.state = CharacterAnimState.idle,
-    this.direction = CharacterDirection.down,
-    this.suitColor = const Color(0xFFDC2626),
-    this.helmetColor = const Color(0xFFFBBF24),
-    this.showShadow = true,
-    this.showHose = true,
-    this.isFemale = false,
-    this.accessoryColor = const Color(0xFF38BDF8),
-    this.skinColor = const Color(0xFFFFD1A4),
-    this.hatStyle = 0,
-    this.accessoryStyle = 0,
-  });
-
-  @override
-  State<AnimatedFirefighterWidget> createState() =>
-      _AnimatedFirefighterWidgetState();
-}
-
-class _AnimatedFirefighterWidgetState extends State<AnimatedFirefighterWidget>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    // 60/90/120 Hz cihazlarda sürekli pürüzsüz akan zaman sayacı
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 10),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final time = _controller.value * 10.0;
-        return CustomPaint(
-          size: Size(widget.size, widget.size),
-          painter: FirefighterCharacterPainter(
-            animTime: time,
-            state: widget.state,
-            direction: widget.direction,
-            suitColor: widget.suitColor,
-            helmetColor: widget.helmetColor,
-            showShadow: widget.showShadow,
-            showHose: widget.showHose,
-            isFemale: widget.isFemale,
-            accessoryColor: widget.accessoryColor,
-            skinColor: widget.skinColor,
-            hatStyle: widget.hatStyle,
-            accessoryStyle: widget.accessoryStyle,
-          ),
-        );
-      },
-    );
+        oldDelegate.skinColor != skinColor ||
+        oldDelegate.helmetColor != helmetColor ||
+        oldDelegate.showBombGlove != showBombGlove ||
+        oldDelegate.hatStyle != hatStyle ||
+        oldDelegate.suitStyle != suitStyle ||
+        oldDelegate.accessoryStyle != accessoryStyle ||
+        oldDelegate.maskStyle != maskStyle;
   }
 }

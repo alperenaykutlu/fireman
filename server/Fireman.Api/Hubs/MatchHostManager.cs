@@ -6,6 +6,7 @@ using Fireman.GameCore.Model;
 using Fireman.GameCore.Replay;
 using Fireman.GameCore.Simulation;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Configuration;
 
 namespace Fireman.Api.Hubs;
 
@@ -16,6 +17,7 @@ namespace Fireman.Api.Hubs;
 public interface IMatchHostManager
 {
     void CreateOrJoinMatch(string matchId, int playerCount = 4);
+    void RegisterPlayer(string matchId, Guid userId, string username);
     void EnqueueInput(string matchId, PlayerInputDto input);
     void RemoveMatch(string matchId);
     MatchReplay? GetMatchReplay(string matchId);
@@ -25,19 +27,24 @@ public sealed class MatchHostManager : IMatchHostManager, IDisposable
 {
     private readonly IHubContext<MatchHub> _hubContext;
     private readonly ILogger<MatchHostManager> _logger;
+    private readonly double _millisecondsPerTick;
     private readonly ConcurrentDictionary<string, ActiveMatchSession> _matches = new();
 
-    public MatchHostManager(IHubContext<MatchHub> hubContext, ILogger<MatchHostManager> logger)
+    public MatchHostManager(IHubContext<MatchHub> hubContext, ILogger<MatchHostManager> logger, IConfiguration configuration)
     {
         _hubContext = hubContext;
         _logger = logger;
+        var tickRate = configuration.GetValue("Game:TickRate", 30);
+        if (tickRate is < 10 or > 60)
+            throw new InvalidOperationException("Game:TickRate must be between 10 and 60.");
+        _millisecondsPerTick = 1000.0 / tickRate;
     }
 
     public void CreateOrJoinMatch(string matchId, int playerCount = 4)
     {
         _matches.GetOrAdd(matchId, id =>
         {
-            var session = new ActiveMatchSession(id, playerCount, _hubContext, _logger);
+            var session = new ActiveMatchSession(id, playerCount, _hubContext, _logger, _millisecondsPerTick);
             session.Start();
             return session;
         });
@@ -49,6 +56,12 @@ public sealed class MatchHostManager : IMatchHostManager, IDisposable
         {
             session.EnqueueInput(input);
         }
+    }
+
+    public void RegisterPlayer(string matchId, Guid userId, string username)
+    {
+        if (_matches.TryGetValue(matchId, out var session))
+            session.RegisterPlayer(userId, username);
     }
 
     public void RemoveMatch(string matchId)
@@ -76,11 +89,10 @@ public sealed class MatchHostManager : IMatchHostManager, IDisposable
 
 internal sealed class ActiveMatchSession : IDisposable
 {
-    private const double MillisecondsPerTick = 1000.0 / 30.0; // ~33.333 ms
-
     private readonly string _matchId;
     private readonly IHubContext<MatchHub> _hubContext;
     private readonly ILogger _logger;
+    private readonly double _millisecondsPerTick;
     private readonly MatchSimulation _simulation;
     private readonly Channel<PlayerInputDto> _inputChannel = Channel.CreateUnbounded<PlayerInputDto>(new UnboundedChannelOptions
     {
@@ -90,15 +102,17 @@ internal sealed class ActiveMatchSession : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task? _loopTask;
     private readonly ConcurrentDictionary<Guid, int> _playerSlotMap = new();
-    private int _nextSlot = 1;
+    private int _nextSlot;
+    private readonly ConcurrentDictionary<int, string> _playerNames = new();
 
     public MatchReplay Replay { get; }
 
-    public ActiveMatchSession(string matchId, int playerCount, IHubContext<MatchHub> hubContext, ILogger logger)
+    public ActiveMatchSession(string matchId, int playerCount, IHubContext<MatchHub> hubContext, ILogger logger, double millisecondsPerTick)
     {
         _matchId = matchId;
         _hubContext = hubContext;
         _logger = logger;
+        _millisecondsPerTick = millisecondsPerTick;
         int seed = matchId.GetHashCode();
 
         _simulation = new MatchSimulation(new MatchConfig
@@ -125,9 +139,15 @@ internal sealed class ActiveMatchSession : IDisposable
         _inputChannel.Writer.TryWrite(input);
     }
 
+    public void RegisterPlayer(Guid userId, string username)
+    {
+        var slot = _playerSlotMap.GetOrAdd(userId, _ => Interlocked.Increment(ref _nextSlot));
+        _playerNames[slot] = username;
+    }
+
     private int GetOrCreateSlot(Guid userId)
     {
-        return _playerSlotMap.GetOrAdd(userId, _ => _nextSlot++);
+        return _playerSlotMap.GetOrAdd(userId, _ => Interlocked.Increment(ref _nextSlot));
     }
 
     private async Task SimulationLoopAsync()
@@ -147,7 +167,8 @@ internal sealed class ActiveMatchSession : IDisposable
                 var inputsToApply = new List<PlayerInput>();
                 while (_inputChannel.Reader.TryRead(out var inputDto))
                 {
-                    int slot = GetOrCreateSlot(inputDto.UserId);
+                    if (!Guid.TryParse(inputDto.UserId, out var inputUserId)) continue;
+                    int slot = GetOrCreateSlot(inputUserId);
                     inputsToApply.Add(new PlayerInput(
                         PlayerId: slot,
                         Seq: inputDto.Seq,
@@ -187,7 +208,7 @@ internal sealed class ActiveMatchSession : IDisposable
                 }
 
                 // 4. Drift compensation calculation (targetTime = start + tickCount * dt)
-                var expectedElapsedMs = tickCount * MillisecondsPerTick;
+                var expectedElapsedMs = tickCount * _millisecondsPerTick;
                 var currentElapsedMs = stopwatch.Elapsed.TotalMilliseconds;
                 var sleepRemainingMs = expectedElapsedMs - currentElapsedMs;
 
@@ -215,18 +236,21 @@ internal sealed class ActiveMatchSession : IDisposable
     {
         var players = _simulation.State.Players.Select(p => new PlayerSnapshotDto(
             PlayerId: p.Id,
-            UserId: _playerSlotMap.FirstOrDefault(kv => kv.Value == p.Id).Key,
+            UserId: _playerSlotMap.FirstOrDefault(kv => kv.Value == p.Id).Key.ToString(),
+            Username: _playerNames.GetValueOrDefault(p.Id, p.Name),
             SubTileX: p.Position.RawX,
             SubTileY: p.Position.RawY,
             Health: p.Health,
             BombCapacity: p.BombCapacity,
             BombRange: p.BombRange,
             Speed: p.MoveSpeedSubUnitsPerTick,
-            IsAlive: p.IsAlive
+            IsAlive: p.IsAlive,
+            Score: p.Score
         )).ToList();
 
         var bombs = _simulation.State.Bombs.Select(b => new BombSnapshotDto(
             BombId: b.Id,
+            OwnerPlayerId: b.OwnerPlayerId,
             TileX: b.TileX,
             TileY: b.TileY,
             RemainingTicks: b.RemainingTicks,
@@ -247,10 +271,13 @@ internal sealed class ActiveMatchSession : IDisposable
         )).ToList();
 
         return new WorldSnapshotDto(
-            MatchId: Guid.TryParse(_matchId, out var g) ? g : Guid.Empty,
+            MatchId: Guid.TryParse(_matchId, out var g) ? g.ToString() : string.Empty,
             Tick: tick,
             WorldHash: hash,
             LastAckedSeq: lastSeq,
+            Columns: WorldState.Columns,
+            Rows: WorldState.Rows,
+            Tiles: _simulation.State.Tiles.Select(tile => (byte)tile).ToList(),
             Players: players,
             Bombs: bombs,
             Flames: flames,

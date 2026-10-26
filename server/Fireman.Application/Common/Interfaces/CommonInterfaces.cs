@@ -10,6 +10,9 @@ public interface IPasswordHasher
 
 public interface ITokenService
 {
+    TimeSpan AccessTokenLifetime { get; }
+    TimeSpan RefreshTokenLifetime { get; }
+    Guid? GetRefreshSubjectHint(string accessToken);
     string GenerateAccessToken(Guid userId, string username, UserRole role);
     string GenerateRefreshToken();
     string HashToken(string token);

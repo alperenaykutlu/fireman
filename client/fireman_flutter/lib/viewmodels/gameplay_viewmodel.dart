@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/game_elements.dart';
+import '../models/character.dart';
+import '../services/game_audio_service.dart';
 
 class GameplayViewModel extends ChangeNotifier {
-  // Klasik Playing with Fire 2 / Bomberman Haritası (15 x 13)
-  static const int cols = 15;
+  // Larger grid restores room to maneuver without taking space from the controls.
+  static const int cols = 23;
   static const int rows = 13;
 
   late List<List<CellType>> _grid;
@@ -16,14 +19,18 @@ class GameplayViewModel extends ChangeNotifier {
 
   int _totalPlayerCount = 4;
   int _score = 0;
+  String _playerName = 'Oyuncu';
+  CharacterModel? _localCharacter;
   String? _lastNotification;
   Timer? _gameLoopTimer;
+  final Stopwatch _tickClock = Stopwatch();
   final Random _random = Random();
 
   // 2 Dakikalık Maç Süresi ve Ani Ölüm (Sudden Death)
   double _remainingSeconds = 120.0;
   bool _isSuddenDeath = false;
   int _suddenDeathStep = 0;
+  double _suddenDeathCooldown = 0;
   final List<Point<int>> _spiralOrder = [];
 
   // Oyun Bitti (Game Over) Durumu
@@ -35,17 +42,45 @@ class GameplayViewModel extends ChangeNotifier {
   int _holdDx = 0;
   int _holdDy = 0;
   double _playerMoveCooldown = 0.0;
+  int _mapRevision = 0;
+  int _gameGeneration = 0;
+  bool _disposed = false;
+  bool _authoritativeOnline = false;
+  double _shakeRemaining = 0;
+  double _shakePhase = 0;
+  double _humanHitFlashRemaining = 0;
 
   // Getters
   List<List<CellType>> get grid => _grid;
-  List<Dynamite> get dynamites => List.unmodifiable(_dynamites);
-  List<ExplosionTile> get explosions => List.unmodifiable(_explosions);
-  List<PowerUpItem> get powerUps => List.unmodifiable(_powerUps);
-  List<ArenaFighter> get fighters => List.unmodifiable(_fighters);
+  // Render consumers iterate these frequently; avoid allocating immutable copies
+  // on every frame. Mutations stay encapsulated in this view model.
+  List<Dynamite> get dynamites => _dynamites;
+  List<ExplosionTile> get explosions => _explosions;
+  List<PowerUpItem> get powerUps => _powerUps;
+  List<ArenaFighter> get fighters => _fighters;
+  int get mapRevision => _mapRevision;
 
   ArenaFighter get humanPlayer => _fighters.firstWhere((f) => f.isHuman, orElse: () => _fighters.first);
   int get totalPlayerCount => _totalPlayerCount;
+  bool get isAuthoritativeOnline => _authoritativeOnline;
   int get score => _score;
+  void configureLocalPlayer({String? name, CharacterModel? character}) {
+    if (name != null && name.trim().isNotEmpty) _playerName = name.trim();
+    if (character != null) _localCharacter = character;
+    for (final fighter in _fighters.where((item) => item.isHuman)) {
+      fighter.name = _playerName;
+      final model = _localCharacter;
+      if (model == null) continue;
+      fighter.bodyColor = Color(model.suitColorValue);
+      fighter.skinColor = Color(model.skinColorValue);
+      fighter.isFemale = model.gender == 'female';
+      fighter.hatStyle = model.hatStyle;
+      fighter.suitStyle = model.suitStyle;
+      fighter.accessoryStyle = model.equippedAccessory.contains('telsizi') ? 1 : model.equippedAccessory.contains('tüp') ? 2 : 0;
+      fighter.maskStyle = model.equippedMask.toLowerCase().contains('standart') ? -1 : 0;
+    }
+    notifyListeners();
+  }
   String? get lastNotification => _lastNotification;
   int get activeDynamiteCount => _dynamites.where((d) => d.ownerId == humanPlayer.id).length;
   double get remainingSeconds => _remainingSeconds;
@@ -56,6 +91,15 @@ class GameplayViewModel extends ChangeNotifier {
   int get holdDx => _holdDx;
   int get holdDy => _holdDy;
   bool get isHumanMoving => _holdDx != 0 || _holdDy != 0;
+  bool get isHumanHitFlashing => _humanHitFlashRemaining > 0;
+  Offset get cameraShakeOffset {
+    if (_shakeRemaining <= 0) return Offset.zero;
+    final intensity = (_shakeRemaining / .18).clamp(0.0, 1.0).toDouble();
+    return Offset(
+      sin(_shakePhase * 1.7) * 4.0 * intensity,
+      cos(_shakePhase * 2.3) * 3.0 * intensity,
+    );
+  }
 
   String get formattedTimer {
     final s = _remainingSeconds.ceil();
@@ -106,6 +150,158 @@ class GameplayViewModel extends ChangeNotifier {
     startNewGame();
   }
 
+  void enableAuthoritativeOnlineMode() {
+    if (_authoritativeOnline || _disposed) return;
+    _authoritativeOnline = true;
+    ++_gameGeneration;
+    _gameLoopTimer?.cancel();
+    _tickClock.stop();
+    _fighters.clear();
+    _dynamites.clear();
+    _explosions.clear();
+    _powerUps.clear();
+    _grid = List.generate(9, (_) => List<CellType>.filled(11, CellType.empty));
+    _mapRevision++;
+    _remainingSeconds = 120;
+    _isGameOver = false;
+    notifyListeners();
+  }
+
+  void applyAuthoritativeSnapshot(Map<String, dynamic> snapshot) {
+    if (!_authoritativeOnline || _disposed) return;
+    final columns = _readInt(snapshot, 'Columns', 11).clamp(1, 64);
+    final rows = _readInt(snapshot, 'Rows', 9).clamp(1, 64);
+    final rawTiles = snapshot['Tiles'] ?? snapshot['tiles'];
+    if (rawTiles is List && rawTiles.length == columns * rows) {
+      var changed = _grid.length != rows || (_grid.isNotEmpty && _grid.first.length != columns);
+      final nextGrid = List.generate(rows, (y) => List.generate(columns, (x) {
+        final raw = (rawTiles[y * columns + x] as num?)?.toInt() ?? 0;
+        final value = CellType.values[raw.clamp(0, 2)];
+        if (!changed && _grid[y][x] != value) changed = true;
+        return value;
+      }));
+      if (changed) { _grid = nextGrid; _mapRevision++; }
+    }
+
+    final rawPlayers = snapshot['Players'] ?? snapshot['players'];
+    if (rawPlayers is List) {
+      final oldPlayers = {for (final fighter in _fighters) fighter.id: fighter};
+      _fighters.clear();
+      for (final raw in rawPlayers) {
+        if (raw is! Map) continue;
+        final player = Map<String, dynamic>.from(raw.map((key, value) => MapEntry(key.toString(), value)));
+        final id = _readInt(player, 'PlayerId', _fighters.length + 1);
+        final existing = oldPlayers[id];
+        final userId = _readString(player, 'UserId');
+        final rawX = _readInt(player, 'SubTileX', 128);
+        final rawY = _readInt(player, 'SubTileY', 128);
+        final x = (rawX / 256).floor().clamp(0, columns - 1);
+        final y = (rawY / 256).floor().clamp(0, rows - 1);
+        final alive = _readBool(player, 'IsAlive', true);
+        final disconnected = existing?.isDisconnected ?? false;
+        final fighter = ArenaFighter(
+          id: id,
+          name: _readString(player, 'Username').isEmpty ? 'Oyuncu $id' : _readString(player, 'Username'),
+          userId: userId.isEmpty ? null : userId,
+          hatColor: existing?.hatColor ?? _onlineHatColor(id),
+          bodyColor: existing?.bodyColor ?? _onlineBodyColor(id),
+          score: _readInt(player, 'Score', existing?.score ?? 0),
+          isHuman: userId.isNotEmpty && userId == _apiUserId,
+          x: x,
+          y: y,
+          health: disconnected ? 0 : _readInt(player, 'Health', alive ? 100 : 0).clamp(0, 100),
+          maxDynamites: _readInt(player, 'BombCapacity', 1),
+          dynamiteRange: _readInt(player, 'BombRange', 1),
+          speed: _readInt(player, 'Speed', 8) / 8,
+          status: alive && !disconnected ? PlayerStatus.alive : PlayerStatus.eliminated,
+          isDisconnected: disconnected,
+        );
+        if (fighter.isHuman) {
+          fighter.name = _playerName;
+          final local = _localCharacter;
+          if (local != null) {
+            fighter.bodyColor = Color(local.suitColorValue);
+            fighter.skinColor = Color(local.skinColorValue);
+            fighter.isFemale = local.gender == 'female';
+            fighter.hatStyle = local.hatStyle;
+            fighter.suitStyle = local.suitStyle;
+            fighter.accessoryStyle = local.equippedAccessory.contains('telsizi') ? 1 : local.equippedAccessory.contains('tüp') ? 2 : 0;
+            fighter.maskStyle = local.equippedMask.toLowerCase().contains('standart') ? -1 : 0;
+          }
+        }
+        _fighters.add(fighter);
+      }
+    }
+
+    _dynamites
+      ..clear()
+      ..addAll(_readList(snapshot, 'Bombs').whereType<Map>().map((raw) {
+        final bomb = Map<String, dynamic>.from(raw.map((key, value) => MapEntry(key.toString(), value)));
+        return Dynamite(x: _readInt(bomb, 'TileX', 0), y: _readInt(bomb, 'TileY', 0), range: _readInt(bomb, 'Range', 1), ownerId: _readInt(bomb, 'OwnerPlayerId', -1), timeLeft: _readInt(bomb, 'RemainingTicks', 0) / 30);
+      }));
+    _explosions
+      ..clear()
+      ..addAll(_readList(snapshot, 'Flames').whereType<Map>().map((raw) {
+        final flame = Map<String, dynamic>.from(raw.map((key, value) => MapEntry(key.toString(), value)));
+        return ExplosionTile(x: _readInt(flame, 'TileX', 0), y: _readInt(flame, 'TileY', 0), duration: _readInt(flame, 'RemainingTicks', 1) / 30);
+      }));
+    _powerUps
+      ..clear()
+      ..addAll(_readList(snapshot, 'PowerUps').whereType<Map>().map((raw) {
+        final powerUp = Map<String, dynamic>.from(raw.map((key, value) => MapEntry(key.toString(), value)));
+        final type = switch (_readInt(powerUp, 'Type', 0)) { 1 => PowerUpType.dynamiteRange, 2 => PowerUpType.rollerSkate, 3 => PowerUpType.extraDynamite, 4 => PowerUpType.shield, _ => PowerUpType.shield };
+        return PowerUpItem(x: _readInt(powerUp, 'TileX', 0), y: _readInt(powerUp, 'TileY', 0), type: type);
+      }));
+
+    final tick = _readInt(snapshot, 'Tick', 0);
+    _remainingSeconds = max(0, 120 - tick / 30).toDouble();
+    _isGameOver = _readBool(snapshot, 'IsMatchOver', false);
+    ArenaFighter? localPlayer;
+    for (final fighter in _fighters) {
+      if (fighter.isHuman) { localPlayer = fighter; break; }
+    }
+    if (localPlayer != null) {
+      _score = localPlayer.score;
+      if (localPlayer.status == PlayerStatus.eliminated) {
+        _score = -_score.abs();
+        localPlayer.score = _score;
+      }
+    }
+    if (_isGameOver) {
+      if (localPlayer?.status == PlayerStatus.eliminated) _score = -_score.abs();
+      _gameOverTitle = 'MAÇ TAMAMLANDI';
+      _gameOverMessage = 'Sunucu otoriter sonucu eşitledi.';
+      _gameLoopTimer?.cancel();
+    }
+    notifyListeners();
+  }
+
+  String _apiUserId = '';
+  void setOnlineUserId(String userId) => _apiUserId = userId;
+
+  void markUserDisconnected(String userId) {
+    final index = _fighters.indexWhere((fighter) => fighter.userId == userId);
+    if (index < 0) return;
+    final fighter = _fighters[index];
+    if (fighter.status == PlayerStatus.eliminated) return;
+    _fighters[index] = ArenaFighter(id: fighter.id, name: fighter.name, userId: fighter.userId, hatColor: fighter.hatColor, bodyColor: fighter.bodyColor, isHuman: fighter.isHuman, x: fighter.x, y: fighter.y, health: 0, wins: fighter.wins, maxDynamites: fighter.maxDynamites, dynamiteRange: fighter.dynamiteRange, speed: fighter.speed, status: PlayerStatus.eliminated, isDisconnected: true, canMoveDynamite: fighter.canMoveDynamite);
+    for (final offset in const [Point(0, 0), Point(1, 0), Point(-1, 0), Point(0, 1), Point(0, -1)]) {
+      _explosions.add(ExplosionTile(x: fighter.x + offset.x, y: fighter.y + offset.y, duration: .65, isCenter: offset.x == 0 && offset.y == 0));
+    }
+    _lastNotification = '⚡ ${fighter.name} bağlantısı kesildi';
+    notifyListeners();
+  }
+
+  static int _readInt(Map<String, dynamic> map, String key, int fallback) {
+    final value = map[key] ?? map[key[0].toLowerCase() + key.substring(1)];
+    return value is num ? value.toInt() : fallback;
+  }
+  static bool _readBool(Map<String, dynamic> map, String key, bool fallback) => (map[key] ?? map[key[0].toLowerCase() + key.substring(1)]) as bool? ?? fallback;
+  static String _readString(Map<String, dynamic> map, String key) => (map[key] ?? map[key[0].toLowerCase() + key.substring(1)])?.toString() ?? '';
+  static List<dynamic> _readList(Map<String, dynamic> map, String key) => (map[key] ?? map[key[0].toLowerCase() + key.substring(1)]) as List? ?? const [];
+  static Color _onlineHatColor(int id) => [const Color(0xFFEF6B48), const Color(0xFF58A6FF), const Color(0xFFC084FC), const Color(0xFFFFC857)][(id - 1).abs() % 4];
+  static Color _onlineBodyColor(int id) => [const Color(0xFFC84536), const Color(0xFF2463A8), const Color(0xFF7549A6), const Color(0xFF986C1D)][(id - 1).abs() % 4];
+
   /// Call this when the match transport reports that a remote participant left.
   void markPlayerDisconnected(int fighterId) {
     ArenaFighter? fighter;
@@ -127,7 +323,9 @@ class GameplayViewModel extends ChangeNotifier {
     _checkMatchEndCondition();
   }
 
-  void startNewGame() {
+  Future<void> startNewGame() async {
+    if (_disposed) return;
+    final generation = ++_gameGeneration;
     _gameLoopTimer?.cancel();
     _dynamites.clear();
     _explosions.clear();
@@ -137,19 +335,32 @@ class GameplayViewModel extends ChangeNotifier {
     _remainingSeconds = 120.0;
     _isSuddenDeath = false;
     _suddenDeathStep = 0;
+    _suddenDeathCooldown = 0;
     _holdDx = 0;
     _holdDy = 0;
+    _shakeRemaining = 0;
+    _humanHitFlashRemaining = 0;
     _playerMoveCooldown = 0.0;
     _isGameOver = false;
     _gameOverTitle = null;
     _gameOverMessage = null;
+    _grid = List.generate(rows, (r) => List.generate(cols, (c) =>
+        r == 0 || r == rows - 1 || c == 0 || c == cols - 1 || (r.isEven && c.isEven)
+            ? CellType.wall : CellType.empty));
 
     // 1. DÖRT KARAKTERİ OLUŞTUR (Başlangıç Hızı: 0.7)
+    _score = 0;
     _fighters.add(ArenaFighter(
       id: 0,
-      name: 'Oyuncu 1',
+      name: _playerName,
       hatColor: const Color(0xFF1D4ED8),
       bodyColor: const Color(0xFF2563EB),
+      skinColor: Color(_localCharacter?.skinColorValue ?? 0xFFFFD1A4),
+      isFemale: _localCharacter?.gender == 'female',
+      hatStyle: _localCharacter?.hatStyle ?? 0,
+      suitStyle: _localCharacter?.suitStyle ?? 0,
+      accessoryStyle: _localCharacter?.equippedAccessory.contains('telsizi') == true ? 1 : 0,
+      maskStyle: _localCharacter?.equippedMask.toLowerCase().contains('standart') == false ? 0 : -1,
       isHuman: true,
       x: 1,
       y: 1,
@@ -195,33 +406,22 @@ class GameplayViewModel extends ChangeNotifier {
       ));
     }
 
-    _generateMapWithDynamicBarrels();
-
+    final generated = await compute(_generateArenaGrid, _random.nextInt(1 << 31));
+    if (_disposed || generation != _gameGeneration) return;
+    _grid = generated.map((row) => row.map((value) => CellType.values[value]).toList()).toList();
+    _mapRevision++;
     _lastNotification = null;
-    _gameLoopTimer = Timer.periodic(const Duration(milliseconds: 30), (_) => _tick(0.03));
-    notifyListeners();
-  }
-
-  void _generateMapWithDynamicBarrels() {
-    _grid = List.generate(rows, (r) {
-      return List.generate(cols, (c) {
-        if (r == 0 || r == rows - 1 || c == 0 || c == cols - 1) {
-          return CellType.wall;
-        }
-        if (r % 2 == 0 && c % 2 == 0) {
-          return CellType.wall;
-        }
-
-        final isCorner = (r <= 2 && c <= 2) ||
-            (r >= rows - 3 && c >= cols - 3) ||
-            (r <= 2 && c >= cols - 3) ||
-            (r >= rows - 3 && c <= 2);
-
-        if (isCorner) return CellType.empty;
-
-        return _random.nextDouble() < 0.70 ? CellType.barrel : CellType.empty;
-      });
+    _tickClock
+      ..reset()
+      ..start();
+    _gameLoopTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      final dt = (_tickClock.elapsedMicroseconds / 1000000.0)
+          .clamp(.001, .1)
+          .toDouble();
+      _tickClock.reset();
+      _tick(dt);
     });
+    notifyListeners();
   }
 
   // --- BASILI TUTMA & HAREKET KONTROLÜ (ÇAPRAZ GEÇİŞ YOK: SADECE DİK) ---
@@ -231,33 +431,56 @@ class GameplayViewModel extends ChangeNotifier {
       dy = 0; // Yatay öncelikli dik hareket
     }
 
+    final wasMoving = _holdDx != 0 || _holdDy != 0;
+    final directionChanged = dx != _holdDx || dy != _holdDy;
     _holdDx = dx;
     _holdDy = dy;
+    if (_authoritativeOnline) {
+      notifyListeners();
+      return;
+    }
+    if (wasMoving && dx == 0 && dy == 0) notifyListeners();
     if (dx != 0 || dy != 0) {
-      if (_playerMoveCooldown <= 0) {
-        _executePlayerMove(dx, dy);
+      final overlapsAnotherFighter = _fighters.any(
+        (fighter) => !fighter.isHuman &&
+            fighter.status == PlayerStatus.alive &&
+            fighter.x == humanPlayer.x &&
+            fighter.y == humanPlayer.y,
+      );
+      // A direction change or a shared tile must never leave a player feeling stuck.
+      if (_playerMoveCooldown <= 0 || directionChanged || overlapsAnotherFighter) {
+        final moved = _executePlayerMove(dx, dy);
         final player = humanPlayer;
         _playerMoveCooldown = 0.16 / player.speed;
+        if (moved) notifyListeners();
       }
     }
   }
 
-  void _executePlayerMove(int dx, int dy) {
+  bool _executePlayerMove(int dx, int dy) {
     final player = humanPlayer;
-    if (player.status == PlayerStatus.eliminated || _isGameOver) return;
+    if (player.status == PlayerStatus.eliminated || _isGameOver) return false;
 
     final targetX = player.x + dx;
     final targetY = player.y + dy;
 
-    if (targetX < 0 || targetX >= cols || targetY < 0 || targetY >= rows) return;
+    if (targetX < 0 || targetX >= cols || targetY < 0 || targetY >= rows) return false;
 
     // Duvara, varile veya kapanan gri taşa çarpma
-    if (_grid[targetY][targetX] != CellType.empty) return;
+    if (_grid[targetY][targetX] != CellType.empty) return false;
 
     // Hedef hücrede dinamit var mı?
     final dynIndex = _dynamites.indexWhere((d) => d.x == targetX && d.y == targetY);
     if (dynIndex != -1) {
+      if (!player.canMoveDynamite) return false;
       final kickedDyn = _dynamites[dynIndex];
+      final nextX = targetX + dx;
+      final nextY = targetY + dy;
+      if (nextX < 0 || nextX >= cols || nextY < 0 || nextY >= rows ||
+          _grid[nextY][nextX] != CellType.empty ||
+          _dynamites.any((d) => d.x == nextX && d.y == nextY)) {
+        return false;
+      }
       _kickDynamite(kickedDyn, dx, dy);
     }
 
@@ -265,7 +488,7 @@ class GameplayViewModel extends ChangeNotifier {
     player.y = targetY;
 
     _checkPowerUpPickup(player);
-    notifyListeners();
+    return true;
   }
 
   void _kickDynamite(Dynamite dyn, int dx, int dy) {
@@ -315,8 +538,12 @@ class GameplayViewModel extends ChangeNotifier {
           if (fighter.isHuman) _lastNotification = '🧨 Dinamit Paketi Alındı (+500 Puan)! Azami dinamit: ${fighter.maxDynamites}';
           break;
         case PowerUpType.shield:
-          fighter.health = (fighter.health + 35).clamp(0, 100);
-          if (fighter.isHuman) _lastNotification = '🛡️ Zırh / Can Alındı (+500 Puan)! Kalan Can: ${fighter.health} HP';
+          fighter.health = (fighter.health + 10).clamp(0, 100).toInt();
+          if (fighter.isHuman) _lastNotification = '❤️ Can yenilendi (+10 HP) • Kalan: ${fighter.health} HP';
+          break;
+        case PowerUpType.bombGlove:
+          fighter.canMoveDynamite = true;
+          if (fighter.isHuman) _lastNotification = '🧤 Dinamit eldiveni alındı • Artık bombaları itebilirsin';
           break;
       }
     }
@@ -325,6 +552,15 @@ class GameplayViewModel extends ChangeNotifier {
   // --- OYUN DÖNGÜSÜ ---
   void _tick(double dt) {
     bool stateChanged = false;
+    _shakePhase += dt * 42;
+    if (_shakeRemaining > 0) {
+      _shakeRemaining = max(0.0, _shakeRemaining - dt).toDouble();
+      stateChanged = true;
+    }
+    if (_humanHitFlashRemaining > 0) {
+      _humanHitFlashRemaining = max(0.0, _humanHitFlashRemaining - dt).toDouble();
+      stateChanged = true;
+    }
 
     // 1. Geri Sayım & Ani Ölüm (Sudden Death)
     if (_remainingSeconds > 0 && !_isGameOver) {
@@ -336,10 +572,13 @@ class GameplayViewModel extends ChangeNotifier {
         stateChanged = true;
       }
     } else if (_isSuddenDeath && !_isGameOver) {
-      // Aşırı hızlı kapanma: her tick'te 1 kare kapanır (30 kare/saniye)!
-      if (_suddenDeathStep < _spiralOrder.length) {
+      // Keep the arena closure speed stable even when the render tick rate changes.
+      _suddenDeathCooldown -= dt;
+      if (_suddenDeathCooldown <= 0 && _suddenDeathStep < _spiralOrder.length) {
+        _suddenDeathCooldown = .05;
         final pt = _spiralOrder[_suddenDeathStep++];
         _grid[pt.y][pt.x] = CellType.suddenDeath;
+        _mapRevision++;
 
         _powerUps.removeWhere((p) => p.x == pt.x && p.y == pt.y);
         _dynamites.removeWhere((d) => d.x == pt.x && d.y == pt.y);
@@ -349,8 +588,8 @@ class GameplayViewModel extends ChangeNotifier {
             f.health = 0;
             f.status = PlayerStatus.eliminated;
             if (f.isHuman) {
-              _score = max(0, _score - 1000);
-              _lastNotification = '💀 Duvar altında ezildin! (-1000 Puan)';
+              _score = -_score.abs();
+              _lastNotification = '💀 Duvar altında ezildin!';
             }
           }
         }
@@ -368,10 +607,10 @@ class GameplayViewModel extends ChangeNotifier {
     if (_holdDx != 0 || _holdDy != 0) {
       _playerMoveCooldown -= dt;
       if (_playerMoveCooldown <= 0) {
-        _executePlayerMove(_holdDx, _holdDy);
+        final moved = _executePlayerMove(_holdDx, _holdDy);
         final player = humanPlayer;
         _playerMoveCooldown = 0.14 / player.speed;
-        stateChanged = true;
+        stateChanged = stateChanged || moved;
       }
     }
 
@@ -409,6 +648,9 @@ class GameplayViewModel extends ChangeNotifier {
         _explosions.removeAt(i);
         stateChanged = true;
       }
+    }
+    if (_explosions.isNotEmpty) {
+      stateChanged = true;
     }
 
     // 5. Dinamit Sayaçlarını Güncelle
@@ -458,6 +700,9 @@ class GameplayViewModel extends ChangeNotifier {
   // Tüm oyuncular ölünce veya oyun bitince haritanın tamamını aynı anda gri duvarlarla kapatır
   void _triggerGameOverAllWallsClose({required String title, required String message}) {
     _isGameOver = true;
+    if (humanPlayer.status == PlayerStatus.eliminated) _score = -_score.abs();
+    if (humanPlayer.status == PlayerStatus.eliminated) _score = -_score.abs();
+    _gameLoopTimer?.cancel();
     _gameOverTitle = title;
     _gameOverMessage = message;
 
@@ -467,6 +712,7 @@ class GameplayViewModel extends ChangeNotifier {
         _grid[r][c] = CellType.suddenDeath;
       }
     }
+    _mapRevision++;
 
     _dynamites.clear();
     _explosions.clear();
@@ -521,12 +767,61 @@ class GameplayViewModel extends ChangeNotifier {
       if (validMoves.isNotEmpty) {
         final safeMoves = validMoves.where((m) => !_isTileInDanger(bot.x + m[0], bot.y + m[1])).toList();
         final selectedMoves = safeMoves.isNotEmpty ? safeMoves : validMoves;
-
-        final chosenMove = selectedMoves[_random.nextInt(selectedMoves.length)];
+        final chosenMove = _chooseBotMove(bot, selectedMoves);
         _tryMoveFighter(bot, chosenMove[0], chosenMove[1]);
         _checkPowerUpPickup(bot);
       }
     }
+  }
+
+  /// Lightweight utility choice, evaluated only when a bot's decision cooldown expires.
+  List<int> _chooseBotMove(ArenaFighter bot, List<List<int>> moves) {
+    final human = humanPlayer;
+    Point<int>? target;
+    if (human.status == PlayerStatus.alive &&
+        (human.x - bot.x).abs() + (human.y - bot.y).abs() <= 6) {
+      target = Point(human.x, human.y);
+    } else if (_powerUps.isNotEmpty) {
+      var nearestDistance = 1 << 30;
+      for (final item in _powerUps) {
+        final distance = (item.x - bot.x).abs() + (item.y - bot.y).abs();
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          target = Point(item.x, item.y);
+        }
+      }
+    } else {
+      var nearestDistance = 1 << 30;
+      for (var y = 1; y < rows - 1; y++) {
+        for (var x = 1; x < cols - 1; x++) {
+          if (_grid[y][x] != CellType.barrel) continue;
+          final distance = (x - bot.x).abs() + (y - bot.y).abs();
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            target = Point(x, y);
+          }
+        }
+      }
+    }
+
+    if (target == null) return moves[_random.nextInt(moves.length)];
+    final currentDistance = (target.x - bot.x).abs() + (target.y - bot.y).abs();
+    var bestScore = -double.infinity;
+    final bestMoves = <List<int>>[];
+    for (final move in moves) {
+      final distance = (target.x - (bot.x + move[0])).abs() +
+          (target.y - (bot.y + move[1])).abs();
+      final score = currentDistance - distance + _random.nextDouble() * .15;
+      if (score > bestScore) {
+        bestScore = score;
+        bestMoves
+          ..clear()
+          ..add(move);
+      } else if (score == bestScore) {
+        bestMoves.add(move);
+      }
+    }
+    return bestMoves[_random.nextInt(bestMoves.length)];
   }
 
   bool _isAdjacentToHuman(int x, int y) {
@@ -621,6 +916,7 @@ class GameplayViewModel extends ChangeNotifier {
 
   // --- DİNAMİT PATLAMASI & PUANLAMA KURALLARI ---
   void _detonateDynamite(Dynamite d) {
+    GameAudioService.instance.playExplosion();
     _addExplosion(d.x, d.y, isCenter: true);
 
     const directions = [
@@ -638,6 +934,7 @@ class GameplayViewModel extends ChangeNotifier {
         // Varil Patlatma (100 Puan)
         if (_grid[ty][tx] == CellType.barrel) {
           _grid[ty][tx] = CellType.empty;
+          _mapRevision++;
           _addExplosion(tx, ty);
 
           if (d.ownerId == humanPlayer.id) {
@@ -664,19 +961,22 @@ class GameplayViewModel extends ChangeNotifier {
 
   void _addExplosion(int x, int y, {bool isCenter = false}) {
     _explosions.add(ExplosionTile(x: x, y: y, isCenter: isCenter));
+    if (isCenter) {
+      _shakeRemaining = .18;
+    }
 
     // Hasar & Puanlama Mantığı
     for (final fighter in _fighters) {
       if (fighter.status == PlayerStatus.alive && fighter.x == x && fighter.y == y) {
-        fighter.health = max(0, fighter.health - 50);
+        fighter.health = max(0, fighter.health - 25);
+        if (fighter.isHuman) _humanHitFlashRemaining = .2;
 
         if (fighter.isHuman) {
           if (fighter.health <= 0) {
             fighter.status = PlayerStatus.eliminated;
-            _score = max(0, _score - 1000);
-            _lastNotification = '💀 Elendin! (-1000 Puan)';
+            _score = -_score.abs();
+            _lastNotification = '💀 Elendin!';
           } else {
-            _score = max(0, _score - 200);
             _lastNotification = '⚠️ Alev hasarı aldın! Kalan: ${fighter.health} HP';
           }
         } else {
@@ -703,7 +1003,27 @@ class GameplayViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _gameGeneration++;
     _gameLoopTimer?.cancel();
+    _tickClock.stop();
     super.dispose();
   }
+}
+
+/// Builds the arena's static grid on a background isolate so map generation
+/// cannot block input, animation, or painting on the UI isolate.
+List<List<int>> _generateArenaGrid(int seed) {
+  final random = Random(seed);
+  return List.generate(GameplayViewModel.rows, (row) =>
+      List.generate(GameplayViewModel.cols, (col) {
+    if (row == 0 || row == GameplayViewModel.rows - 1 || col == 0 || col == GameplayViewModel.cols - 1 ||
+        (row.isEven && col.isEven)) return CellType.wall.index;
+    final corner = (row <= 2 && col <= 2) ||
+        (row >= GameplayViewModel.rows - 3 && col >= GameplayViewModel.cols - 3) ||
+        (row <= 2 && col >= GameplayViewModel.cols - 3) ||
+        (row >= GameplayViewModel.rows - 3 && col <= 2);
+    if (corner) return CellType.empty.index;
+    return random.nextDouble() < .58 ? CellType.barrel.index : CellType.empty.index;
+  }));
 }

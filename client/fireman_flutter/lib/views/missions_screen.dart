@@ -25,16 +25,12 @@ class _MissionsScreenState extends State<MissionsScreen> {
     final missionsVm = context.watch<MissionsViewModel>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('🎯 Görevler & Kurtarma'),
-        actions: [
-          IconButton(
-            onPressed: () => missionsVm.loadMissions(),
-            icon: const Icon(Icons.refresh),
-          )
-        ],
-      ),
-      body: missionsVm.isLoading
+      body: SafeArea(child: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 8, 10, 4), child: Row(children: [
+          const Expanded(child: Text('🎯 Görevler & Kurtarma', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+          IconButton(tooltip: 'Yenile', onPressed: () => missionsVm.loadMissions(), icon: const Icon(Icons.refresh)),
+        ])),
+        Expanded(child: missionsVm.isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.separated(
               padding: const EdgeInsets.all(16),
@@ -43,12 +39,15 @@ class _MissionsScreenState extends State<MissionsScreen> {
               itemBuilder: (context, index) {
                 final mission = missionsVm.missions[index];
 
+                final colors = [const Color(0xFFFF8A4C), const Color(0xFF54C8E8), const Color(0xFF9A83FF), const Color(0xFF77D28C)];
+                final accent = colors[index % colors.length];
+                final icons = [Icons.local_fire_department, Icons.water_drop_outlined, Icons.health_and_safety_outlined, Icons.emoji_events_outlined];
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppConstants.bgCard,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppConstants.borderCard),
+                    gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [accent.withValues(alpha: .14), const Color(0xFF172231), const Color(0xFF141C28)]),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: accent.withValues(alpha: .28)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,6 +55,8 @@ class _MissionsScreenState extends State<MissionsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
+                          Container(width: 36, height: 36, decoration: BoxDecoration(color: accent.withValues(alpha: .16), borderRadius: BorderRadius.circular(11)), child: Icon(icons[index % icons.length], color: accent, size: 19)),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               mission.title,
@@ -70,7 +71,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
                             ),
                             child: Text(
                               '🪙 ${mission.rewardCoins}  XP: ${mission.rewardXp}',
-                              style: const TextStyle(fontSize: 12, color: AppConstants.gold, fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 11, color: accent, fontWeight: FontWeight.w900),
                             ),
                           ),
                         ],
@@ -111,7 +112,8 @@ class _MissionsScreenState extends State<MissionsScreen> {
                   ),
                 );
               },
-            ),
+            )),
+      ])),
     );
   }
 }

@@ -4,6 +4,7 @@ using Fireman.Application.Missions;
 using Fireman.Contracts.Characters;
 using Fireman.Contracts.Inventory;
 using Fireman.Contracts.Missions;
+using Fireman.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,12 +16,12 @@ namespace Fireman.Api.Controllers;
 public class CharactersController : BaseApiController
 {
     private readonly ICharacterService _characterService;
-    private readonly Fireman.Infrastructure.Persistence.FiremanDbContext _db;
+    private readonly IDocumentDatabase _database;
 
-    public CharactersController(ICharacterService characterService, Fireman.Infrastructure.Persistence.FiremanDbContext db)
+    public CharactersController(ICharacterService characterService, IDocumentDatabase database)
     {
         _characterService = characterService;
-        _db = db;
+        _database = database;
     }
 
     [HttpGet("me")]
@@ -44,33 +45,30 @@ public class CharactersController : BaseApiController
         return HandleResult(result);
     }
 
-    [AllowAnonymous]
     [HttpPut("customization")]
     public async Task<IActionResult> SaveCustomization([FromBody] SaveCustomizationRequest request, CancellationToken ct)
     {
         if (!TryGetProfileId(out var id)) return BadRequest("A valid character profile id is required.");
 
-        var record = await _db.CharacterCustomizations.FindAsync([id], ct);
+        var record = await _database.GetAsync<Fireman.Domain.Characters.CharacterCustomization>("characterCustomizations", id.ToString(), ct);
         if (record is null)
         {
             record = new Fireman.Domain.Characters.CharacterCustomization(id, request.Gender, request.Hat,
-                request.HatStyle, request.Suit, request.SuitStyle, request.Accessory, request.SkinColorValue, request.SuitColorValue);
-            _db.CharacterCustomizations.Add(record);
+                request.HatStyle, request.Suit, request.SuitStyle, request.Accessory, request.SkinColorValue, request.SuitColorValue, request.Mask, request.Gloves, request.Shoes, request.Bomb);
         }
         else
         {
-            record.Update(request.Gender, request.Hat, request.HatStyle, request.Suit, request.SuitStyle, request.Accessory, request.SkinColorValue, request.SuitColorValue);
+            record.Update(request.Gender, request.Hat, request.HatStyle, request.Suit, request.SuitStyle, request.Accessory, request.SkinColorValue, request.SuitColorValue, request.Mask, request.Gloves, request.Shoes, request.Bomb);
         }
-        await _db.SaveChangesAsync(ct);
+        await _database.SetAsync("characterCustomizations", id.ToString(), record, ct);
         return Ok(new { data = request });
     }
 
-    [AllowAnonymous]
     [HttpGet("customization")]
     public async Task<IActionResult> GetCustomization(CancellationToken ct)
     {
         if (!TryGetProfileId(out var id)) return BadRequest("A valid character profile id is required.");
-        var record = await _db.CharacterCustomizations.FindAsync([id], ct);
+        var record = await _database.GetAsync<Fireman.Domain.Characters.CharacterCustomization>("characterCustomizations", id.ToString(), ct);
         return Ok(new { data = record });
     }
 
@@ -78,14 +76,12 @@ public class CharactersController : BaseApiController
     {
         var identity = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
-        var profileId = User.Identity?.IsAuthenticated == true
-            ? identity
-            : Request.Headers["X-Character-Profile-Id"].FirstOrDefault();
-        return Guid.TryParse(profileId, out id);
+        id = Guid.Empty;
+        return User.Identity?.IsAuthenticated == true && Guid.TryParse(identity, out id);
     }
 }
 
-public record SaveCustomizationRequest(string Gender, string Hat, int HatStyle, string Suit, int SuitStyle, string Accessory, long SkinColorValue = 4294955428L, long SuitColorValue = 4292617766L);
+public record SaveCustomizationRequest(string Gender, string Hat, int HatStyle, string Suit, int SuitStyle, string Accessory, long SkinColorValue = 4294955428L, long SuitColorValue = 4292617766L, string Mask = "Standart maske", string Gloves = "Standart eldiven", string Shoes = "Standart ayakkabı", string Bomb = "Klasik dinamit");
 
 [ApiController]
 [Route("api/v1/inventory")]

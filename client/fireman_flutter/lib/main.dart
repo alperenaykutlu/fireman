@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,16 +8,17 @@ import 'viewmodels/character_viewmodel.dart';
 import 'viewmodels/missions_viewmodel.dart';
 import 'viewmodels/match_viewmodel.dart';
 import 'viewmodels/gameplay_viewmodel.dart';
-import 'views/onboarding_screen.dart';
+import 'services/game_notification_service.dart';
+import 'views/startup_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations(const [
+  await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   final apiService = ApiService();
-
   runApp(
     MultiProvider(
       providers: [
@@ -29,6 +31,7 @@ void main() {
       child: const FiremanApp(),
     ),
   );
+  unawaited(GameNotificationService.instance.initialize().catchError((_) {}));
 }
 
 class FiremanApp extends StatelessWidget {
@@ -40,7 +43,7 @@ class FiremanApp extends StatelessWidget {
       title: 'Fireman Mobile',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const OnboardingScreen(),
+      home: const StartupScreen(),
     );
   }
 }

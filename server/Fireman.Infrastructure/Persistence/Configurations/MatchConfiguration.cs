@@ -16,6 +16,8 @@ public class MatchConfiguration : IEntityTypeConfiguration<Match>
         builder.Property(m => m.Status).HasConversion<string>().HasMaxLength(50).IsRequired();
         builder.Property(m => m.HostUserId).IsRequired();
         builder.Property(m => m.MaxPlayers).IsRequired();
+        builder.Property(m => m.RoomName).HasMaxLength(40).IsRequired();
+        builder.Property(m => m.PasswordHash).HasMaxLength(64);
         builder.Property(m => m.CreatedAt).IsRequired();
         builder.Property(m => m.StartedAt);
         builder.Property(m => m.FinishedAt);

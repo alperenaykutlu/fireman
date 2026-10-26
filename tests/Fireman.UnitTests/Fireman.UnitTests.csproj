@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\server\Fireman.Application\Fireman.Application.csproj" />
     <ProjectReference Include="..\..\server\Fireman.GameCore\Fireman.GameCore.csproj" />
     <ProjectReference Include="..\..\server\Fireman.Shared\Fireman.Shared.csproj" />
+    <ProjectReference Include="..\..\server\Fireman.Infrastructure\Fireman.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

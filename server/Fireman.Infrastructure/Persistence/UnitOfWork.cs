@@ -4,16 +4,17 @@ namespace Fireman.Infrastructure.Persistence;
 
 public class UnitOfWork : IUnitOfWork
 {
-    private readonly InMemoryDbContext _context;
+    private readonly IDocumentDatabase _database;
 
-    public UnitOfWork(InMemoryDbContext context)
+    public UnitOfWork(IDocumentDatabase database)
     {
-        _context = context;
+        _database = database;
     }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // For in-memory context, mutation is concurrent; return affected count
+        // Writes are committed by each selected document provider at repository boundaries.
+        _ = _database;
         return Task.FromResult(1);
     }
 }

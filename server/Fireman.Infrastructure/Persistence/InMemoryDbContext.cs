@@ -7,6 +7,7 @@ using Fireman.Domain.Inventory;
 using Fireman.Domain.Matches;
 using Fireman.Domain.Missions;
 using Fireman.Domain.Users;
+using Fireman.Domain.Social;
 using Fireman.Shared.Enums;
 
 namespace Fireman.Infrastructure.Persistence;
@@ -20,6 +21,8 @@ public class InMemoryDbContext
     public ConcurrentDictionary<Guid, Mission> Missions { get; } = new();
     public ConcurrentDictionary<Guid, UserMission> UserMissions { get; } = new();
     public ConcurrentDictionary<Guid, Match> Matches { get; } = new();
+    public ConcurrentDictionary<Guid, DirectMessage> DirectMessages { get; } = new();
+    public ConcurrentDictionary<Guid, Friendship> Friendships { get; } = new();
     public ConcurrentDictionary<Guid, Wallet> Wallets { get; } = new();
     public List<CurrencyLedgerEntry> CurrencyLedger { get; } = new();
     public List<AntiCheatLog> AntiCheatLogs { get; } = new();

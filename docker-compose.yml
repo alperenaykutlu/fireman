@@ -4,9 +4,9 @@ services:
     container_name: fireman-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: fireman_db
-      POSTGRES_USER: fireman
-      POSTGRES_PASSWORD: fireman_secret_password_2026
+      POSTGRES_DB: ${POSTGRES_DB:-fireman_db}
+      POSTGRES_USER: ${POSTGRES_USER:-fireman}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fireman_secret_password_2026}
     ports:
       - "5432:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
       - ./server/Fireman.Infrastructure/Persistence/Migrations/002_CharacterCustomizations.sql:/docker-entrypoint-initdb.d/002_CharacterCustomizations.sql:ro
       - ./server/Fireman.Infrastructure/Persistence/Migrations/003_CustomizationColors.sql:/docker-entrypoint-initdb.d/003_CustomizationColors.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fireman -d fireman_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,12 +24,15 @@ services:
     image: redis:7-alpine
     container_name: fireman-redis
     restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-fireman_local_redis}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-fireman_local_redis}
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping"]
       interval: 5s
       timeout: 5s
       retries: 5
